@@ -7,6 +7,7 @@ from typing import List
 
 from ..database import get_db
 from ..services.ats_service import get_ats_service
+from ..services.integration_service import integrate_status_change
 from ..schemas.application import (
     StatusUpdate,
     StatusUpdateResponse,
@@ -40,6 +41,7 @@ async def update_job_status(
     Update job application status
 
     Validates status transitions and creates event tracking.
+    Triggers integrations: follow-ups, calendar, WebSocket notifications.
     """
     try:
         ats_service = get_ats_service(db)
@@ -48,6 +50,15 @@ async def update_job_status(
             new_status=status_update.status.value,
             notes=status_update.notes
         )
+
+        # Trigger integrations (follow-ups, calendar, WebSocket)
+        await integrate_status_change(
+            db=db,
+            job_id=job_id,
+            old_status=result["old_status"],
+            new_status=result["new_status"]
+        )
+
         return result
     except ValueError as e:
         raise HTTPException(
