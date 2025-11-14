@@ -1,0 +1,2090 @@
+Technical Architecture
+Component 1: Chrome Extension
+Functionality:
+
+Adds floating button to job posting pages (LinkedIn, Indeed, Glassdoor, etc.)
+Extracts job data automatically:
+
+Company name
+Job title
+Full JD text
+Application URL
+Location, salary (if available)
+
+
+Sends to backend with one click
+Shows progress notification
+
+Tech Stack: JavaScript/React, Chrome Extension API
+
+
+Component 2: Backend API
+Recommended Stack: Python + FastAPI
+Processing Flow:
+
+# Pseudo-code flow
+async def process_job(job_data):
+    # 1. Create Google Drive folder structure
+    folder_id = create_drive_folder(f"{company_name} - {job_title}")
+    
+    # 2. Save JD as Google Doc
+    save_jd_to_drive(job_data.jd_text, folder_id)
+    
+    # 3. Load reference materials
+    experience_inventory = load_from_drive("experience_inventory.csv")
+    skills_taxonomy = load_from_drive("skills_taxonomy.csv")
+    corporate_translation = load_from_drive("corporate_translation.csv")
+    achievement_library = load_from_drive("achievement_library.csv")
+    
+    # 4. Call Claude API with comprehensive prompt
+    analysis = await analyze_job_fit(
+        jd=job_data.jd_text,
+        experience=experience_inventory,
+        skills=skills_taxonomy,
+        translations=corporate_translation,
+        achievements=achievement_library
+    )
+    
+    # 5. If match score >= 70%, generate documents
+    if analysis.score >= 70:
+        resume = await generate_resume(job_data, analysis)
+        cover_letter_conv = await generate_cover_letter(job_data, "conversational")
+        cover_letter_formal = await generate_cover_letter(job_data, "formal")
+        
+        # 6. Save to Google Drive
+        save_documents_to_drive(folder_id, resume, cover_letter_conv, cover_letter_formal)
+        
+        # 7. Log to tracking sheet
+        log_to_tracking_sheet(job_data, analysis.score)
+    
+    # 8. Send email notification
+    send_notification_email(job_data, analysis, folder_link)
+```
+
+**Integrations:**
+- Google Drive API (file operations)
+- Claude API (analysis & generation)
+- Gmail API (notifications)
+- Google Sheets API (job tracking)
+
+---
+
+## Key Improvements & Recommendations
+
+### **1. Eliminate Kick Resume Step**
+
+**Why:** If Claude is already generating a resume, having a separate Kick Resume step is redundant.
+
+**Solution:** 
+- Have Claude generate ATS-optimized resumes directly in proper format
+- Create resume templates in your Google Drive that match her preferred styles
+- Use python-docx to generate properly formatted Word docs
+- Convert to PDF automatically
+- **Result:** Saves 2-3 manual steps per application
+
+**If she insists on Kick Resume:** Keep it as optional manual polish step, not required workflow step
+
+---
+
+### **2. Dramatically Improve Cover Letter Quality**
+
+**Current Problem:** Generic, inauthentic-sounding cover letters
+
+**Root Cause:** Claude lacks context about her authentic voice and storytelling style
+
+**Solutions:**
+
+**A. Create "Voice Profile" Document:**
+```
+Include in Claude context:
+- 3-5 actual writing samples from her
+- Common phrases she naturally uses
+- Stories she tells about her teaching experience
+- Her authentic motivations for career transition
+- Her communication style (formal vs. casual)
+- Examples of good vs. bad cover letters (marked up)
+```
+
+**B. Shift Generation Approach:**
+```
+Instead of: "Generate a complete cover letter"
+
+Use: "Generate:
+1. 3-4 compelling storylines that connect her experience to this role
+2. Key talking points for each paragraph
+3. Specific achievement examples to highlight
+4. Authentic opening and closing suggestions
+
+Then she crafts the narrative using these building blocks."
+```
+
+**C. Create Cover Letter Templates:**
+```
+Template structure:
+- Opening hook (3 variations)
+- Transition story framework
+- Achievement showcase format
+- Closing call-to-action
+
+Claude fills in specifics, she adjusts voice/flow
+```
+
+**D. Prompt Engineering:**
+```
+Add to Claude system prompt:
+"Write in [wife's name]'s voice - warm, authentic, story-driven. 
+She's transitioning from education to [target role]. 
+Focus on transferable impact, not keywords.
+Avoid corporate jargon unless natural to the story.
+Show genuine enthusiasm without being over-the-top.
+Reference specific examples from her achievement library."
+
+
+3. Add Job Tracking System
+Create Google Sheet: "Job Applications Tracker"
+Auto-populate columns:
+
+Date Analyzed
+Company
+Job Title
+Match Score
+Key Strengths (top 3)
+Potential Gaps
+Documents Folder Link
+Application Status (dropdown: Not Applied, Applied, Interview, Rejected, Offer)
+Application Date
+Notes
+
+Benefits:
+
+See all analyzed jobs at a glance
+Track application pipeline
+Identify patterns in successful applications
+Feed back into ML for future improvements
+
+4. Smart Pre-Filtering
+Before full Claude analysis, do quick automated checks:
+
+def quick_filter(job_data):
+    # Deal-breakers
+    if "PhD required" in job_data.jd_text:
+        return False, "PhD required"
+    
+    if job_data.location not in acceptable_locations:
+        return False, "Location mismatch"
+    
+    # Must-haves
+    required_keywords = ["analysis", "data", "operations", "project"]
+    if not any(kw in job_data.jd_text.lower() for kw in required_keywords):
+        return False, "Role type mismatch"
+    
+    # Red flags
+    red_flags = ["teaching", "classroom", "K-12", "elementary"]
+    flag_count = sum(1 for flag in red_flags if flag in job_data.jd_text.lower())
+    if flag_count > 2:
+        return False, "Too education-focused"
+    
+    return True, "Passed pre-filter"
+    
+    Saves: Claude API calls on obviously bad fits
+    
+    
+    5. Batch Processing Mode
+Use Case: She finds 5-10 interesting jobs throughout the day
+Workflow:
+
+Click "Add to Queue" instead of immediate processing
+Browser extension stores them locally
+Click "Analyze Batch" at end of day
+Receive single email with summary of all analyses
+Review and decide which to pursue
+
+Benefits:
+
+More efficient use of time
+Compare opportunities side-by-side
+Avoid decision fatigue
+
+Implementation Roadmap
+Phase 1: MVP (Weekend Project - 8-12 hours)
+Goal: Prove concept works end-to-end
+Deliverables:
+
+Simple web form (not Chrome extension yet)
+Paste JD text manually
+Backend does Claude analysis
+Generates documents
+Uploads to Google Drive
+Sends email notification
+
+Tech: Python FastAPI backend, Google Drive API, Claude API
+
+
+Phase 2: Browser Integration (1 week)
+Goal: One-click experience
+Deliverables:
+
+Chrome extension with floating button
+Auto-extract JD from common job sites
+Integration with Phase 1 backend
+
+Tech: Chrome Extension API, content scripts for job site parsing
+
+Phase 3: Quality Improvements (Ongoing)
+Focus Areas:
+
+Improve cover letter authenticity (add voice profile)
+Refine scoring algorithm based on real results
+Optimize prompts through A/B testing
+Add job tracking sheet integration
+Build resume template library
+
+
+Phase 4: Advanced Features (Optional)
+
+Learning system: Track which applications get responses, adjust scoring
+Analytics dashboard: Success rates, time savings, etc.
+Mobile app: Process jobs from phone
+Calendar integration: Track application deadlines
+Network analysis: LinkedIn connection finder at target companies
+
+Estimated Time Savings
+Current Process Time: ~45-60 minutes per application
+
+Search & identify: 10 min
+Copy JD, organize files: 5 min
+Claude analysis: 5 min
+Document generation: 10 min
+File management: 5 min
+Kick Resume updates: 10 min
+Cover letter editing: 10-15 min
+
+Automated Process Time: ~10-15 minutes per application
+
+One click to analyze: 30 seconds
+Review analysis email: 2 min
+Edit cover letter (with better starting point): 5-8 min
+Final review: 5 min
+
+Savings: 30-45 minutes per application
+ROI: If applying to 20 jobs, saves 10-15 hours
+
+Technical Requirements
+To Build This:
+
+Google Cloud Project (free tier sufficient initially)
+
+Enable Drive API
+Enable Gmail API
+Enable Sheets API
+Get OAuth credentials
+
+
+Claude API Access
+
+Anthropic API key
+Sufficient credits (estimate $1-2 per job analysis)
+
+
+Hosting Options:
+
+Local: Run on your computer (free, easy to start)
+Cloud: Railway.app, Render.com, or AWS (< $10/month)
+
+
+Development Setup:
+
+Python 3.9+
+Node.js (for extension)
+Git for version control
+
+
+
+
+Cost Analysis
+Claude API: ~$1-2 per job analysis (with document generation)
+Google Cloud: Free tier should cover needs
+Hosting: $0 (local) to $10/month (cloud)
+Monthly estimate (50 jobs analyzed): $50-100 in API calls
+Worth it? Absolutely - saves 25+ hours per month
+
+Questions to Consider
+
+Does she really need Kick Resume? Could we eliminate this step entirely?
+Cover letter style: Would "building blocks" approach work better than full generation?
+Resume variants: Should Claude maintain multiple resume templates for different job types (Product Manager vs. Operations vs. Analyst)?
+Notification preference: Email, Slack, or SMS notification?
+Priority scoring: Beyond 70% threshold, should system prioritize jobs (e.g., "Must Apply," "Strong Fit," "Possible")?
+
+
+Next Steps
+If this sounds good, I can help you:
+
+Set up the MVP backend architecture
+Write the Chrome extension
+Create optimized Claude prompts for better cover letters
+Build the Google Drive integration
+Set up job tracking system
+
+Want me to start with a specific component? I'd recommend beginning with the backend API and Claude integration since that's the core value-add, then adding the browser extension once that's solid.
+Would you like me to dive deeper into any specific part of this, or shall we start building the MVP?RetryEWe've already paid for it for the year, but eh, maybe not necessaryBuilding blocks would work I think, that was one idea where as we build all the resumes we would have sufficient paragraphs that could be chosen and substituted based on the JD I think that would be usefulEmail is probably bestNot necessary, but knowing the score would be good. In some instance even if the score is low it might still be useful to applyIf you could write a very thorough md guide of what is needed to build this for a vibe coding platform, that would be great as I have some credits to use. Claude (you! will be used), I imagine we want to also integrate the job-analyst skills that we had previously built that we currently use for this process. In an ideal world as well, we would have the ability to scrape/search for jobs with specific titles or generic ones where we would also semantically match her abilities with the jobs.Show moreArchitected comprehensive automation system integrating job scraping, semantic matching, and analysis.The user wants me to create a comprehensive markdown guide for building this automation system using a vibe coding platform (likely Cursor, Windsurf, or similar AI-assisted coding environments). They want to:
+
+Build the full automation system
+Integrate their existing job-analyst skill
+Add job scraping/searching with semantic matching
+Have it work with Claude for the analysis
+
+This needs to be extremely detailed and thorough so that Claude (or another AI) in a vibe coding platform can follow it step-by-step to build the entire system.
+I should structure this as:
+
+Project overview
+Architecture diagram
+Prerequisites
+File structure
+Detailed implementation for each component
+Integration steps
+Testing procedures
+Deployment guide
+Usage instructions
+
+Let me make this VERY comprehensive since they're using credits and want this to work smoothly.Complete Job Application Automation System - Implementation Guide
+For AI-Assisted Development Platforms (Cursor, Windsurf, etc.)
+
+Table of Contents
+
+Project Overview
+System Architecture
+Prerequisites & Setup
+Project Structure
+Phase 1: Backend API Core
+Phase 2: Claude Integration & Job Analysis
+Phase 3: Google Drive Integration
+Phase 4: Job Scraping & Search
+Phase 5: Chrome Extension
+Phase 6: Notification System
+Phase 7: Resume Template System
+Testing & Debugging
+Deployment
+Usage Guide
+Maintenance & Improvements
+
+
+Project Overview
+What We're Building
+A one-click job application assistant that:
+
+Scrapes/searches for relevant jobs across multiple platforms
+Analyzes job-candidate fit using Claude AI
+Generates tailored resumes and cover letters
+Organizes everything in Google Drive
+Sends email notifications with results
+
+Technology Stack
+Backend:
+
+Python 3.11+
+FastAPI (web framework)
+SQLite (job tracking database)
+Celery (async task processing)
+Redis (task queue)
+
+AI/ML:
+
+Anthropic Claude API (job analysis & document generation)
+Sentence Transformers (semantic matching)
+
+Integrations:
+
+Google Drive API
+Gmail API
+Google Sheets API
+Job board scrapers (Selenium/Playwright)
+
+Frontend:
+
+Chrome Extension (Manifest V3)
+JavaScript/React
+Tailwind CSS
+
+Infrastructure:
+
+Docker (containerization)
+Railway/Render (hosting options)
+
+
+System Architecture
+┌─────────────────────────────────────────────────────────────────┐
+│                         USER INTERACTIONS                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Chrome Extension  │  Web Dashboard  │  Job Search Interface     │
+└──────────┬──────────────────┬───────────────────┬───────────────┘
+           │                  │                   │
+           ▼                  ▼                   ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       FASTAPI BACKEND                             │
+├─────────────────────────────────────────────────────────────────┤
+│  REST API Endpoints  │  WebSocket (real-time updates)            │
+└──────────┬──────────────────┬───────────────────┬───────────────┘
+           │                  │                   │
+           ▼                  ▼                   ▼
+┌──────────────────┐  ┌──────────────┐  ┌─────────────────────┐
+│   Celery Tasks   │  │   Database   │  │  External Services  │
+│  (Async Jobs)    │  │   (SQLite)   │  │                     │
+├──────────────────┤  ├──────────────┤  ├─────────────────────┤
+│ - Job Analysis   │  │ - Jobs       │  │ - Claude API        │
+│ - Doc Generation │  │ - Candidates │  │ - Google Drive API  │
+│ - Scraping       │  │ - Documents  │  │ - Gmail API         │
+│ - Notifications  │  │ - Analytics  │  │ - Job Board APIs    │
+└──────────────────┘  └──────────────┘  └─────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        STORAGE & OUTPUT                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Google Drive Folders  │  Email Notifications  │  Tracking Sheet │
+└─────────────────────────────────────────────────────────────────┘
+
+Prerequisites & Setup
+1. Development Environment Setup
+bash# Create project directory
+mkdir job-automation-system
+cd job-automation-system
+
+# Set up Python virtual environment
+python3.11 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Initialize git
+git init
+echo "venv/" > .gitignore
+echo ".env" >> .gitignore
+echo "__pycache__/" >> .gitignore
+echo "*.pyc" >> .gitignore
+echo "*.db" >> .gitignore
+echo "credentials/" >> .gitignore
+2. Required Accounts & API Keys
+You will need:
+
+Anthropic Claude API
+
+Sign up at: https://console.anthropic.com/
+Get API key from dashboard
+Estimated cost: $50-100/month for 50 jobs
+
+
+Google Cloud Project
+
+Go to: https://console.cloud.google.com/
+Create new project: "job-automation"
+Enable APIs:
+
+Google Drive API
+Gmail API
+Google Sheets API
+
+
+Create OAuth 2.0 credentials:
+
+Application type: Desktop app
+Download credentials.json
+
+
+Create Service Account (for backend operations):
+
+Download service account key JSON
+
+
+
+
+Job Board API Keys (Optional but recommended)
+
+LinkedIn Jobs API (if available)
+Indeed API
+Glassdoor API
+
+
+
+3. Environment Configuration
+Create .env file:
+bash# .env file
+# ============================================
+# AI API Keys
+# ============================================
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+OPENAI_API_KEY=sk-xxxxx  # Optional, for embeddings
+
+# ============================================
+# Google Cloud Credentials
+# ============================================
+GOOGLE_CREDENTIALS_PATH=./credentials/service-account.json
+GOOGLE_OAUTH_CREDENTIALS_PATH=./credentials/oauth-credentials.json
+GOOGLE_DRIVE_FOLDER_ID=your-base-folder-id  # Root folder for jobs
+
+# ============================================
+# Email Configuration
+# ============================================
+NOTIFICATION_EMAIL=your-wife@email.com
+SENDER_EMAIL=your-service-account@project.iam.gserviceaccount.com
+
+# ============================================
+# Database
+# ============================================
+DATABASE_URL=sqlite:///./job_automation.db
+
+# ============================================
+# Redis (Task Queue)
+# ============================================
+REDIS_URL=redis://localhost:6379/0
+
+# ============================================
+# Application Settings
+# ============================================
+API_HOST=0.0.0.0
+API_PORT=8000
+ENVIRONMENT=development  # development, staging, production
+LOG_LEVEL=INFO
+
+# ============================================
+# Job Search Settings
+# ============================================
+DEFAULT_LOCATION=Remote,United States
+DEFAULT_JOB_TITLES=Business Analyst,Operations Analyst,Product Manager,Risk Analyst
+MIN_MATCH_SCORE=70
+
+# ============================================
+# Job Board API Keys (Optional)
+# ============================================
+LINKEDIN_CLIENT_ID=xxxxx
+LINKEDIN_CLIENT_SECRET=xxxxx
+INDEED_API_KEY=xxxxx
+GLASSDOOR_API_KEY=xxxxx
+
+# ============================================
+# Security
+# ============================================
+SECRET_KEY=your-super-secret-key-change-this
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+```
+
+---
+
+## Project Structure
+```
+job-automation-system/
+│
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                      # FastAPI application entry
+│   │   ├── config.py                    # Configuration management
+│   │   ├── database.py                  # Database connection & models
+│   │   │
+│   │   ├── api/                         # API routes
+│   │   │   ├── __init__.py
+│   │   │   ├── jobs.py                  # Job endpoints
+│   │   │   ├── analysis.py              # Analysis endpoints
+│   │   │   ├── documents.py             # Document endpoints
+│   │   │   └── scraping.py              # Scraping endpoints
+│   │   │
+│   │   ├── models/                      # SQLAlchemy models
+│   │   │   ├── __init__.py
+│   │   │   ├── job.py
+│   │   │   ├── candidate.py
+│   │   │   ├── document.py
+│   │   │   └── analysis.py
+│   │   │
+│   │   ├── schemas/                     # Pydantic schemas
+│   │   │   ├── __init__.py
+│   │   │   ├── job.py
+│   │   │   ├── analysis.py
+│   │   │   └── document.py
+│   │   │
+│   │   ├── services/                    # Business logic
+│   │   │   ├── __init__.py
+│   │   │   ├── claude_service.py        # Claude AI integration
+│   │   │   ├── job_analyzer.py          # Job analysis logic
+│   │   │   ├── document_generator.py    # Resume/cover letter generation
+│   │   │   ├── semantic_matcher.py      # Semantic job matching
+│   │   │   ├── scraper_service.py       # Job scraping
+│   │   │   ├── google_drive_service.py  # Google Drive operations
+│   │   │   ├── email_service.py         # Email notifications
+│   │   │   └── template_service.py      # Resume template management
+│   │   │
+│   │   ├── tasks/                       # Celery tasks
+│   │   │   ├── __init__.py
+│   │   │   ├── celery_app.py            # Celery configuration
+│   │   │   ├── job_tasks.py             # Async job processing
+│   │   │   └── scraping_tasks.py        # Async scraping
+│   │   │
+│   │   ├── scrapers/                    # Job board scrapers
+│   │   │   ├── __init__.py
+│   │   │   ├── base_scraper.py          # Base scraper class
+│   │   │   ├── linkedin_scraper.py
+│   │   │   ├── indeed_scraper.py
+│   │   │   ├── glassdoor_scraper.py
+│   │   │   └── generic_scraper.py       # For other sites
+│   │   │
+│   │   ├── prompts/                     # Claude AI prompts
+│   │   │   ├── __init__.py
+│   │   │   ├── job_analysis.py
+│   │   │   ├── resume_generation.py
+│   │   │   └── cover_letter.py
+│   │   │
+│   │   └── utils/                       # Utility functions
+│   │       ├── __init__.py
+│   │       ├── logging.py
+│   │       ├── validators.py
+│   │       └── formatters.py
+│   │
+│   ├── alembic/                         # Database migrations
+│   │   └── versions/
+│   │
+│   ├── tests/                           # Test suite
+│   │   ├── __init__.py
+│   │   ├── test_api.py
+│   │   ├── test_services.py
+│   │   └── test_scrapers.py
+│   │
+│   ├── requirements.txt                 # Python dependencies
+│   ├── Dockerfile                       # Container definition
+│   └── docker-compose.yml               # Multi-service setup
+│
+├── extension/                           # Chrome extension
+│   ├── manifest.json
+│   ├── background.js
+│   ├── content.js
+│   ├── popup/
+│   │   ├── popup.html
+│   │   ├── popup.js
+│   │   └── popup.css
+│   ├── icons/
+│   └── utils/
+│
+├── skills/                              # Claude skills/context
+│   ├── job-match-analyzer/
+│   │   ├── SKILL.md
+│   │   ├── experience_inventory.csv
+│   │   ├── skills_taxonomy.csv
+│   │   ├── corporate_translation.csv
+│   │   └── achievement_library.csv
+│   │
+│   └── voice_profile.md                 # Wife's writing voice samples
+│
+├── resume_templates/                    # Resume building blocks
+│   ├── paragraphs/
+│   │   ├── opening_summaries/
+│   │   ├── experience_blocks/
+│   │   ├── skills_sections/
+│   │   └── achievements/
+│   │
+│   └── full_templates/
+│       ├── business_analyst.docx
+│       ├── operations_manager.docx
+│       ├── product_manager.docx
+│       └── risk_analyst.docx
+│
+├── docs/                                # Documentation
+│   ├── API.md
+│   ├── DEPLOYMENT.md
+│   └── PROMPTS.md
+│
+├── scripts/                             # Utility scripts
+│   ├── setup_google_auth.py
+│   ├── test_claude_connection.py
+│   └── migrate_existing_jobs.py
+│
+├── .env                                 # Environment variables
+├── .env.example                         # Example env file
+├── .gitignore
+├── README.md
+└── docker-compose.yml                   # Full stack deployment
+
+Phase 1: Backend API Core
+Step 1.1: Install Dependencies
+Create backend/requirements.txt:
+txt# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+psycopg2-binary==2.9.9  # If using PostgreSQL later
+
+# Task Queue
+celery==5.3.4
+redis==5.0.1
+
+# AI/ML
+anthropic==0.7.7
+sentence-transformers==2.2.2
+torch==2.1.1  # For semantic matching
+numpy==1.24.3
+
+# Google APIs
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+google-api-python-client==2.108.0
+
+# Web Scraping
+selenium==4.15.2
+playwright==1.40.0
+beautifulsoup4==4.12.2
+requests==2.31.0
+httpx==0.25.2
+
+# Document Processing
+python-docx==1.1.0
+PyPDF2==3.0.1
+reportlab==4.0.7
+jinja2==3.1.2
+
+# Email
+sendgrid==6.11.0  # Alternative to Gmail API
+
+# Data Processing
+pandas==2.1.3
+openpyxl==3.1.2  # For Excel
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Utilities
+python-dotenv==1.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Logging & Monitoring
+loguru==0.7.2
+sentry-sdk==1.38.0  # Optional: error tracking
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.2  # For testing API
+
+# Development
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+Install:
+bashcd backend
+pip install -r requirements.txt
+Step 1.2: Database Models
+Create backend/app/models/job.py:
+pythonfrom sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, JSON
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from ..database import Base
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Job Details
+    job_id = Column(String, unique=True, index=True)  # External job ID
+    company = Column(String, index=True)
+    job_title = Column(String, index=True)
+    job_description = Column(Text)
+    job_url = Column(String)
+    
+    # Location & Meta
+    location = Column(String)
+    salary_min = Column(Float, nullable=True)
+    salary_max = Column(Float, nullable=True)
+    remote_type = Column(String)  # remote, hybrid, onsite
+    job_type = Column(String)  # full-time, part-time, contract
+    
+    # Source
+    source = Column(String)  # linkedin, indeed, manual, etc.
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Analysis
+    match_score = Column(Float, nullable=True)
+    analysis_completed = Column(Boolean, default=False)
+    analysis_date = Column(DateTime, nullable=True)
+    analysis_results = Column(JSON, nullable=True)
+    
+    # Status Tracking
+    status = Column(String, default="discovered")  # discovered, analyzed, documents_generated, applied, rejected, interview, offer
+    applied_date = Column(DateTime, nullable=True)
+    
+    # Google Drive Integration
+    drive_folder_id = Column(String, nullable=True)
+    drive_folder_url = Column(String, nullable=True)
+    
+    # Relationships
+    documents = relationship("Document", back_populates="job")
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Job {self.company} - {self.job_title}>"
+Create backend/app/models/document.py:
+pythonfrom sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy.orm import relationship
+from datetime import datetime
+import enum
+from ..database import Base
+
+
+class DocumentType(str, enum.Enum):
+    JOB_DESCRIPTION = "job_description"
+    RESUME = "resume"
+    COVER_LETTER_CONVERSATIONAL = "cover_letter_conversational"
+    COVER_LETTER_FORMAL = "cover_letter_formal"
+    ANALYSIS_REPORT = "analysis_report"
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    job_id = Column(Integer, ForeignKey("jobs.id"))
+    
+    document_type = Column(SQLEnum(DocumentType))
+    title = Column(String)
+    content = Column(Text)
+    
+    # Google Drive
+    drive_file_id = Column(String, nullable=True)
+    drive_file_url = Column(String, nullable=True)
+    
+    # Generation metadata
+    generated_by = Column(String, default="claude")  # claude, manual, template
+    generation_prompt = Column(Text, nullable=True)
+    
+    # Version control
+    version = Column(Integer, default=1)
+    is_current = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    job = relationship("Job", back_populates="documents")
+
+    def __repr__(self):
+        return f"<Document {self.document_type} for Job {self.job_id}>"
+Create backend/app/models/candidate.py:
+pythonfrom sqlalchemy import Column, Integer, String, Text, JSON, DateTime
+from datetime import datetime
+from ..database import Base
+
+
+class Candidate(Base):
+    """Stores candidate information and reference materials"""
+    __tablename__ = "candidates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Basic Info
+    name = Column(String)
+    email = Column(String, unique=True, index=True)
+    phone = Column(String, nullable=True)
+    
+    # Resume Data
+    experience_inventory = Column(JSON)  # From CSV
+    skills_taxonomy = Column(JSON)  # From CSV
+    corporate_translation = Column(JSON)  # From CSV
+    achievement_library = Column(JSON)  # From CSV
+    
+    # Voice Profile
+    voice_profile = Column(Text)  # Writing samples and style guide
+    
+    # Resume Templates
+    resume_templates = Column(JSON)  # Store template IDs and types
+    
+    # Preferences
+    target_roles = Column(JSON)  # List of desired job titles
+    preferred_locations = Column(JSON)
+    min_salary = Column(Integer, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Candidate {self.name}>"
+Create backend/app/database.py:
+pythonfrom sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from .config import settings
+
+engine = create_engine(
+    settings.DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+
+def get_db():
+    """Dependency for FastAPI routes"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def init_db():
+    """Initialize database - create all tables"""
+    from .models import job, document, candidate  # Import all models
+    Base.metadata.create_all(bind=engine)
+Step 1.3: Configuration Management
+Create backend/app/config.py:
+pythonfrom pydantic_settings import BaseSettings
+from typing import List
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    # API Configuration
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
+    ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
+    
+    # Security
+    SECRET_KEY: str
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # Database
+    DATABASE_URL: str
+    
+    # Redis
+    REDIS_URL: str
+    
+    # Anthropic Claude
+    ANTHROPIC_API_KEY: str
+    CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+    MAX_TOKENS: int = 8000
+    
+    # Google Cloud
+    GOOGLE_CREDENTIALS_PATH: str
+    GOOGLE_OAUTH_CREDENTIALS_PATH: str
+    GOOGLE_DRIVE_FOLDER_ID: str
+    
+    # Email
+    NOTIFICATION_EMAIL: str
+    SENDER_EMAIL: str
+    
+    # Job Search
+    DEFAULT_LOCATION: str
+    DEFAULT_JOB_TITLES: str
+    MIN_MATCH_SCORE: int = 70
+    
+    # Job Board APIs (Optional)
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    INDEED_API_KEY: str = ""
+    GLASSDOOR_API_KEY: str = ""
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+    @property
+    def job_titles_list(self) -> List[str]:
+        return [title.strip() for title in self.DEFAULT_JOB_TITLES.split(",")]
+    
+    @property
+    def locations_list(self) -> List[str]:
+        return [loc.strip() for loc in self.DEFAULT_LOCATION.split(",")]
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
+Step 1.4: FastAPI Main Application
+Create backend/app/main.py:
+pythonfrom fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
+from loguru import logger
+
+from .config import settings
+from .database import init_db
+from .api import jobs, analysis, documents, scraping
+
+
+# Configure logging
+logging.basicConfig(level=settings.LOG_LEVEL)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events"""
+    # Startup
+    logger.info("🚀 Starting Job Automation System...")
+    init_db()
+    logger.info("✅ Database initialized")
+    yield
+    # Shutdown
+    logger.info("👋 Shutting down...")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="Job Application Automation System",
+    description="Automated job search, analysis, and application document generation",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if settings.ENVIRONMENT == "development" else ["https://yourdomain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Health check
+@app.get("/")
+async def root():
+    return {
+        "message": "Job Automation System API",
+        "status": "running",
+        "environment": settings.ENVIRONMENT
+    }
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
+# Include routers
+app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
+app.include_router(scraping.router, prefix="/api/v1/scraping", tags=["scraping"])
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.API_HOST,
+        port=settings.API_PORT,
+        reload=settings.ENVIRONMENT == "development"
+    )
+Step 1.5: Basic API Routes
+Create backend/app/api/jobs.py:
+pythonfrom fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from datetime import datetime
+
+from ..database import get_db
+from ..models.job import Job
+from ..schemas.job import JobCreate, JobResponse, JobUpdate, JobList
+
+router = APIRouter()
+
+
+@router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+async def create_job(
+    job_data: JobCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new job entry"""
+    # Check if job already exists
+    existing_job = db.query(Job).filter(Job.job_url == job_data.job_url).first()
+    if existing_job:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job already exists in database"
+        )
+    
+    # Create job
+    job = Job(**job_data.model_dump())
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
+    return job
+
+
+@router.get("/", response_model=JobList)
+async def list_jobs(
+    skip: int = 0,
+    limit: int = 100,
+    status_filter: Optional[str] = None,
+    min_score: Optional[float] = None,
+    db: Session = Depends(get_db)
+):
+    """List all jobs with optional filters"""
+    query = db.query(Job)
+    
+    if status_filter:
+        query = query.filter(Job.status == status_filter)
+    
+    if min_score is not None:
+        query = query.filter(Job.match_score >= min_score)
+    
+    total = query.count()
+    jobs = query.offset(skip).limit(limit).all()
+    
+    return {
+        "total": total,
+        "jobs": jobs,
+        "skip": skip,
+        "limit": limit
+    }
+
+
+@router.get("/{job_id}", response_model=JobResponse)
+async def get_job(job_id: int, db: Session = Depends(get_db)):
+    """Get job by ID"""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    return job
+
+
+@router.patch("/{job_id}", response_model=JobResponse)
+async def update_job(
+    job_id: int,
+    job_update: JobUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update job details"""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    # Update fields
+    for field, value in job_update.model_dump(exclude_unset=True).items():
+        setattr(job, field, value)
+    
+    job.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(job)
+    
+    return job
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(job_id: int, db: Session = Depends(get_db)):
+    """Delete a job"""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    db.delete(job)
+    db.commit()
+    
+    return None
+Create backend/app/schemas/job.py:
+pythonfrom pydantic import BaseModel, HttpUrl, Field
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+
+class JobBase(BaseModel):
+    company: str
+    job_title: str
+    job_description: str
+    job_url: str
+    location: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    remote_type: Optional[str] = "unknown"
+    job_type: Optional[str] = "full-time"
+    source: str = "manual"
+
+
+class JobCreate(JobBase):
+    pass
+
+
+class JobUpdate(BaseModel):
+    company: Optional[str] = None
+    job_title: Optional[str] = None
+    job_description: Optional[str] = None
+    status: Optional[str] = None
+    match_score: Optional[float] = None
+    analysis_results: Optional[Dict[str, Any]] = None
+    drive_folder_id: Optional[str] = None
+    drive_folder_url: Optional[str] = None
+    applied_date: Optional[datetime] = None
+
+
+class JobResponse(JobBase):
+    id: int
+    job_id: str
+    match_score: Optional[float]
+    analysis_completed: bool
+    status: str
+    drive_folder_url: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class JobList(BaseModel):
+    total: int
+    jobs: List[JobResponse]
+    skip: int
+    limit: int
+```
+
+---
+
+## Phase 2: Claude Integration & Job Analysis
+
+This is the **CORE** of the system. We'll integrate your existing job-match-analyzer skill.
+
+### Step 2.1: Load Existing Skills Context
+
+First, ensure your skills are in the correct location:
+```
+skills/
+└── job-match-analyzer/
+    ├── SKILL.md
+    ├── experience_inventory.csv
+    ├── skills_taxonomy.csv
+    ├── corporate_translation.csv
+    └── achievement_library.csv
+Step 2.2: Create Claude Service
+Create backend/app/services/claude_service.py:
+pythonimport anthropic
+from typing import Dict, Any, List, Optional
+import json
+from loguru import logger
+import csv
+from pathlib import Path
+
+from ..config import settings
+
+
+class ClaudeService:
+    """Service for interacting with Claude API"""
+    
+    def __init__(self):
+        self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.model = settings.CLAUDE_MODEL
+        self.max_tokens = settings.MAX_TOKENS
+        
+        # Load reference materials
+        self.skills_path = Path(__file__).parent.parent.parent.parent / "skills" / "job-match-analyzer"
+        self._load_reference_materials()
+    
+    def _load_reference_materials(self):
+        """Load all CSV reference materials"""
+        try:
+            self.experience_inventory = self._load_csv(self.skills_path / "experience_inventory.csv")
+            self.skills_taxonomy = self._load_csv(self.skills_path / "skills_taxonomy.csv")
+            self.corporate_translation = self._load_csv(self.skills_path / "corporate_translation.csv")
+            self.achievement_library = self._load_csv(self.skills_path / "achievement_library.csv")
+            
+            # Load skill instructions
+            skill_md_path = self.skills_path / "SKILL.md"
+            if skill_md_path.exists():
+                with open(skill_md_path, 'r') as f:
+                    self.skill_instructions = f.read()
+            else:
+                self.skill_instructions = ""
+            
+            logger.info("✅ Reference materials loaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Error loading reference materials: {e}")
+            raise
+    
+    def _load_csv(self, path: Path) -> List[Dict[str, Any]]:
+        """Load CSV file into list of dicts"""
+        if not path.exists():
+            logger.warning(f"⚠️ CSV file not found: {path}")
+            return []
+        
+        with open(path, 'r', encoding='utf-8') as f:
+            return list(csv.DictReader(f))
+    
+    def _format_reference_materials(self) -> str:
+        """Format reference materials for Claude"""
+        return f"""
+<reference_materials>
+
+<skill_instructions>
+{self.skill_instructions}
+</skill_instructions>
+
+<experience_inventory>
+{json.dumps(self.experience_inventory, indent=2)}
+</experience_inventory>
+
+<skills_taxonomy>
+{json.dumps(self.skills_taxonomy, indent=2)}
+</skills_taxonomy>
+
+<corporate_translation>
+{json.dumps(self.corporate_translation, indent=2)}
+</corporate_translation>
+
+<achievement_library>
+{json.dumps(self.achievement_library, indent=2)}
+</achievement_library>
+
+</reference_materials>
+"""
+    
+    async def analyze_job_fit(
+        self,
+        job_description: str,
+        company: str,
+        job_title: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze job fit using Claude with reference materials
+        
+        Returns:
+            {
+                "match_score": 0-100,
+                "key_strengths": [...],
+                "potential_gaps": [...],
+                "transferable_skills": [...],
+                "recommended_focus_areas": [...],
+                "should_apply": bool,
+                "reasoning": "...",
+                "tailoring_suggestions": {...}
+            }
+        """
+        from ..prompts.job_analysis import JOB_ANALYSIS_PROMPT
+        
+        try:
+            # Format the complete prompt
+            full_prompt = f"""
+{self._format_reference_materials()}
+
+<job_details>
+<company>{company}</company>
+<job_title>{job_title}</job_title>
+<job_description>
+{job_description}
+</job_description>
+</job_details>
+
+{JOB_ANALYSIS_PROMPT}
+"""
+            
+            logger.info(f"🤖 Analyzing job fit for: {company} - {job_title}")
+            
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": full_prompt
+                }]
+            )
+            
+            # Extract response content
+            response_text = response.content[0].text
+            
+            # Parse JSON from response
+            analysis_result = self._parse_analysis_response(response_text)
+            
+            logger.info(f"✅ Analysis complete. Match score: {analysis_result.get('match_score')}%")
+            
+            return analysis_result
+            
+        except Exception as e:
+            logger.error(f"❌ Error analyzing job: {e}")
+            raise
+    
+    def _parse_analysis_response(self, response_text: str) -> Dict[str, Any]:
+        """Parse Claude's response and extract JSON"""
+        try:
+            # Try to find JSON in the response
+            start_idx = response_text.find('{')
+            end_idx = response_text.rfind('}') + 1
+            
+            if start_idx != -1 and end_idx > start_idx:
+                json_str = response_text[start_idx:end_idx]
+                return json.loads(json_str)
+            else:
+                # If no JSON found, return structured error
+                logger.warning("⚠️ No JSON found in response, returning default structure")
+                return {
+                    "match_score": 0,
+                    "key_strengths": [],
+                    "potential_gaps": [],
+                    "should_apply": False,
+                    "reasoning": "Unable to parse analysis response",
+                    "raw_response": response_text
+                }
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Error parsing JSON: {e}")
+            return {
+                "match_score": 0,
+                "error": str(e),
+                "raw_response": response_text
+            }
+
+
+# Singleton instance
+_claude_service = None
+
+def get_claude_service() -> ClaudeService:
+    global _claude_service
+    if _claude_service is None:
+        _claude_service = ClaudeService()
+    return _claude_service
+Step 2.3: Job Analysis Prompt
+Create backend/app/prompts/job_analysis.py:
+pythonJOB_ANALYSIS_PROMPT = """
+You are an expert career transition analyst specializing in helping educators move into corporate roles. You have deep knowledge of how teaching skills translate to business environments.
+
+**YOUR TASK:**
+Analyze the job description against the candidate's background (provided in reference materials) and determine:
+1. Overall match score (0-100)
+2. Key strengths that align with the role
+3. Potential gaps or areas of concern
+4. Transferable skills from education background
+5. Specific suggestions for tailoring application materials
+
+**ANALYSIS CRITERIA:**
+
+1. **Hard Skills Match (30%):**
+   - Technical skills required vs. possessed
+   - Tools and software experience
+   - Quantitative/analytical capabilities
+   - Domain knowledge
+
+2. **Transferable Skills (25%):**
+   - Project management → Product/Operations management
+   - Curriculum design → Process design/improvement
+   - Data analysis (student outcomes) → Business analytics
+   - Stakeholder management (parents, admin) → Cross-functional collaboration
+   - Training/coaching → Leadership/mentoring
+
+3. **Soft Skills & Cultural Fit (20%):**
+   - Communication skills
+   - Problem-solving approach
+   - Adaptability/learning agility
+   - Collaboration style
+
+4. **Experience Level (15%):**
+   - Years of experience (consider teaching years as relevant)
+   - Leadership/management experience
+   - Project scope and complexity
+
+5. **Education & Qualifications (10%):**
+   - Degree requirements
+   - Certifications
+   - Domain knowledge
+
+**IMPORTANT CONSIDERATIONS:**
+- The candidate is actively TRANSITIONING from education to corporate roles
+- Teaching experience of 10+ years should be valued highly for:
+  - Project management (managing multiple classes, initiatives)
+  - Data analysis (student performance tracking)
+  - Stakeholder management (parents, administration)
+  - Process improvement (curriculum optimization)
+- Don't penalize lack of "corporate" experience - focus on transferable skills
+- Math background is highly relevant for analytical roles
+- Masters in Math demonstrates strong quantitative capabilities
+
+**SCORING GUIDELINES:**
+- 85-100: Excellent fit, highly recommend applying
+- 70-84: Good fit, recommend applying with tailored materials
+- 55-69: Moderate fit, consider applying if genuinely interested
+- 40-54: Stretch role, only if very interested and willing to emphasize transferable skills
+- 0-39: Poor fit, not recommended
+
+**OUTPUT FORMAT:**
+Return your analysis as a JSON object with this exact structure:
+```json
+{
+  "match_score": <0-100>,
+  "match_level": "<excellent|good|moderate|stretch|poor>",
+  "should_apply": <true|false>,
+  
+  "key_strengths": [
+    {
+      "strength": "<specific strength>",
+      "evidence": "<how it shows up in experience inventory>",
+      "relevance": "<why it matters for this role>"
+    }
+  ],
+  
+  "potential_gaps": [
+    {
+      "gap": "<specific gap>",
+      "severity": "<critical|moderate|minor>",
+      "mitigation": "<how to address in application>"
+    }
+  ],
+  
+  "transferable_skills": [
+    {
+      "teaching_skill": "<skill from education>",
+      "corporate_equivalent": "<how it translates>",
+      "supporting_achievements": ["<achievement from library>"]
+    }
+  ],
+  
+  "recommended_focus_areas": [
+    "<area to emphasize in resume/cover letter>"
+  ],
+  
+  "resume_tailoring": {
+    "must_include_achievements": ["<specific achievements from library>"],
+    "skills_to_highlight": ["<specific skills from taxonomy>"],
+    "experience_to_emphasize": ["<which roles/responsibilities>"],
+    "suggested_summary": "<2-3 sentence professional summary for this role>"
+  },
+  
+  "cover_letter_guidance": {
+    "opening_hook": "<compelling opening that connects to role>",
+    "key_storylines": [
+      {
+        "theme": "<main narrative thread>",
+        "supporting_points": ["<specific examples>"]
+      }
+    ],
+    "gaps_to_address": ["<how to proactively address concerns>"],
+    "closing_cta": "<strong closing call to action>"
+  },
+  
+  "reasoning": "<detailed explanation of your analysis>",
+  
+  "red_flags": [
+    "<any concerning requirements or cultural indicators>"
+  ],
+  
+  "additional_research_needed": [
+    "<things to research about company/role before applying>"
+  ]
+}
+```
+
+**CRITICAL:** 
+- Be honest but constructive
+- Focus on what the candidate CAN do, not what they can't
+- Provide actionable advice
+- Remember: career transitions are common and valuable
+- Teaching is a highly transferable profession
+"""
+Step 2.4: Job Analyzer Service
+Create backend/app/services/job_analyzer.py:
+pythonfrom typing import Dict, Any
+from loguru import logger
+from datetime import datetime
+
+from .claude_service import get_claude_service
+from ..models.job import Job
+from ..database import SessionLocal
+
+
+class JobAnalyzer:
+    """Service for analyzing job postings"""
+    
+    def __init__(self):
+        self.claude = get_claude_service()
+    
+    async def analyze_job(self, job_id: int) -> Dict[str, Any]:
+        """
+        Analyze a job posting and update database
+        
+        Args:
+            job_id: ID of job in database
+            
+        Returns:
+            Analysis results
+        """
+        db = SessionLocal()
+        try:
+            # Get job from database
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+            
+            logger.info(f"🔍 Analyzing job: {job.company} - {job.job_title}")
+            
+            # Perform analysis using Claude
+            analysis_result = await self.claude.analyze_job_fit(
+                job_description=job.job_description,
+                company=job.company,
+                job_title=job.job_title
+            )
+            
+            # Update job with analysis results
+            job.match_score = analysis_result.get("match_score", 0)
+            job.analysis_completed = True
+            job.analysis_date = datetime.utcnow()
+            job.analysis_results = analysis_result
+            
+            # Update status
+            if analysis_result.get("should_apply", False):
+                job.status = "ready_for_documents"
+            else:
+                job.status = "analyzed_no_action"
+            
+            db.commit()
+            db.refresh(job)
+            
+            logger.info(f"✅ Analysis complete. Score: {job.match_score}%")
+            
+            return {
+                "job_id": job.id,
+                "match_score": job.match_score,
+                "analysis": analysis_result,
+                "status": job.status
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error analyzing job {job_id}: {e}")
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+
+# Singleton
+_job_analyzer = None
+
+def get_job_analyzer() -> JobAnalyzer:
+    global _job_analyzer
+    if _job_analyzer is None:
+        _job_analyzer = JobAnalyzer()
+    return _job_analyzer
+Step 2.5: Analysis API Endpoint
+Create backend/app/api/analysis.py:
+pythonfrom fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
+from typing import Dict, Any
+
+from ..database import get_db
+from ..models.job import Job
+from ..services.job_analyzer import get_job_analyzer
+from ..schemas.analysis import AnalysisRequest, AnalysisResponse
+
+router = APIRouter()
+
+
+@router.post("/{job_id}", response_model=AnalysisResponse)
+async def analyze_job(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze a job posting for candidate fit
+    
+    This will:
+    1. Use Claude to analyze the job description
+    2. Score the match (0-100)
+    3. Identify strengths and gaps
+    4. Provide tailoring recommendations
+    5. Update job record with results
+    """
+    # Check if job exists
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Check if already analyzed
+    if job.analysis_completed:
+        return {
+            "job_id": job.id,
+            "match_score": job.match_score,
+            "analysis": job.analysis_results,
+            "message": "Job already analyzed. Returning cached results."
+        }
+    
+    try:
+        # Perform analysis
+        analyzer = get_job_analyzer()
+        result = await analyzer.analyze_job(job_id)
+        
+        return {
+            "job_id": result["job_id"],
+            "match_score": result["match_score"],
+            "analysis": result["analysis"],
+            "message": "Analysis completed successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analyzing job: {str(e)}"
+        )
+
+
+@router.post("/{job_id}/re-analyze", response_model=AnalysisResponse)
+async def re_analyze_job(
+    job_id: int,
+    db: Session = Depends(get_db)
+):
+    """Force re-analysis of a job (ignores cached results)"""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Reset analysis flags
+    job.analysis_completed = False
+    job.match_score = None
+    job.analysis_results = None
+    db.commit()
+    
+    # Run analysis
+    analyzer = get_job_analyzer()
+    result = await analyzer.analyze_job(job_id)
+    
+    return {
+        "job_id": result["job_id"],
+        "match_score": result["match_score"],
+        "analysis": result["analysis"],
+        "message": "Re-analysis completed successfully"
+    }
+Create backend/app/schemas/analysis.py:
+pythonfrom pydantic import BaseModel
+from typing import Dict, Any, Optional
+
+
+class AnalysisRequest(BaseModel):
+    force_reanalyze: bool = False
+
+
+class AnalysisResponse(BaseModel):
+    job_id: int
+    match_score: float
+    analysis: Dict[str, Any]
+    message: str
+
+Phase 3: Google Drive Integration
+Step 3.1: Google Authentication Setup
+Create scripts/setup_google_auth.py:
+python"""
+Script to set up Google OAuth authentication
+Run this once to get the token.json file
+"""
+
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+
+# Scopes required
+SCOPES = [
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/spreadsheets'
+]
+
+
+def setup_google_auth():
+    """Set up Google OAuth and save credentials"""
+    creds = None
+    token_path = 'credentials/token.json'
+    credentials_path = 'credentials/oauth-credentials.json'
+    
+    # Check if we have saved credentials
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    
+    # If no valid credentials, let user log in
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                credentials_path, SCOPES)
+            creds = flow.run_local_server(port=0)
+        
+        # Save credentials
+        os.makedirs('credentials', exist_ok=True)
+        with open(token_path, 'w') as token:
+            token.write(creds.to_json())
+    
+    print("✅ Google authentication successful!")
+    print(f"✅ Credentials saved to {token_path}")
+    
+    # Test the connection
+    try:
+        service = build('drive', 'v3', credentials=creds)
+        results = service.files().list(pageSize=10).execute()
+        print(f"✅ Successfully connected to Google Drive")
+        print(f"   Found {len(results.get('files', []))} files in your drive")
+    except Exception as e:
+        print(f"❌ Error testing Drive connection: {e}")
+
+
+if __name__ == '__main__':
+    setup_google_auth()
+Run this script:
+bashpython scripts/setup_google_auth.py
+Step 3.2: Google Drive Service
+Create backend/app/services/google_drive_service.py:
+pythonfrom google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
+from typing import Optional, Dict, Any, List
+import io
+from pathlib import Path
+from loguru import logger
+
+from ..config import settings
+
+
+class GoogleDriveService:
+    """Service for Google Drive operations"""
+    
+    def __init__(self):
+        self.creds = self._get_credentials()
+        self.service = build('drive', 'v3', credentials=self.creds)
+        self.base_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
+    
+    def _get_credentials(self):
+        """Get Google Drive credentials"""
+        try:
+            # Try service account first
+            if Path(settings.GOOGLE_CREDENTIALS_PATH).exists():
+                return service_account.Credentials.from_service_account_file(
+                    settings.GOOGLE_CREDENTIALS_PATH,
+                    scopes=['https://www.googleapis.com/auth/drive']
+                )
+            # Fall back to OAuth
+            elif Path('credentials/token.json').exists():
+                return Credentials.from_authorized_user_file(
+                    'credentials/token.json',
+                    scopes=['https://www.googleapis.com/auth/drive']
+                )
+            else:
+                raise FileNotFoundError("No Google credentials found")
+        except Exception as e:
+            logger.error(f"❌ Error loading Google credentials: {e}")
+            raise
+    
+    def create_job_folder(
+        self,
+        company: str,
+        job_title: str,
+        parent_folder_id: Optional[str] = None
+    ) -> Dict[str, str]:
+        """
+        Create a folder for a job application
+        
+        Returns:
+            {"folder_id": "...", "folder_url": "..."}
+        """
+        try:
+            folder_name = f"{company} - {job_title}"
+            parent_id = parent_folder_id or self.base_folder_id
+            
+            file_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [parent_id]
+            }
+            
+            folder = self.service.files().create(
+                body=file_metadata,
+                fields='id, webViewLink'
+            ).execute()
+            
+            logger.info(f"✅ Created folder: {folder_name}")
+            
+            return {
+                "folder_id": folder['id'],
+                "folder_url": folder['webViewLink']
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error creating folder: {e}")
+            raise
+    
+    def upload_document(
+        self,
+        content: str,
+        filename: str,
+        folder_id: str,
+        mime_type: str = 'application/vnd.google-apps.document'
+    ) -> Dict[str, str]:
+        """
+        Upload a document to Google Drive
+        
+        Args:
+            content: Document content (text or bytes)
+            filename: Name for the file
+            folder_id: Parent folder ID
+            mime_type: MIME type of file
+            
+        Returns:
+            {"file_id": "...", "file_url": "..."}
+        """
+        try:
+            # Convert content to bytes if string
+            if isinstance(content, str):
+                content_bytes = content.encode('utf-8')
+            else:
+                content_bytes = content
+            
+            file_metadata = {
+                'name': filename,
+                'parents': [folder_id]
+            }
+            
+            media = MediaIoBaseUpload(
+                io.BytesIO(content_bytes),
+                mimetype=mime_type,
+                resumable=True
+            )
+            
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, webViewLink'
+            ).execute()
+            
+            logger.info(f"✅ Uploaded: {filename}")
+            
+            return {
+                "file_id": file['id'],
+                "file_url": file['webViewLink']
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error uploading document: {e}")
+            raise
+    
+    def upload_job_description(
+        self,
+        jd_content: str,
+        folder_id: str,
+        company: str,
+        job_title: str
+    ) -> Dict[str, str]:
+        """Upload job description as Google Doc"""
+        filename = f"{company} - {job_title} - JD"
+        return self.upload_document(
+            content=jd_content,
+            filename=filename,
+            folder_id=folder_id,
+            mime_type='application/vnd.google-apps.document'
+        )
+    
+    def upload_resume(
+        self,
+        resume_content: bytes,
+        folder_id: str,
+        filename: str = "Resume.pdf"
+    ) -> Dict[str, str]:
+        """Upload resume as PDF"""
+        return self.upload_document(
+            content=resume_content,
+            filename=filename,
+            folder_id=folder_id,
+            mime_type='application/pdf'
+        )
+    
+    def upload_cover_letter(
+        self,
+        content: str,
+        folder_id: str,
+        letter_type: str = "conversational"
+    ) -> Dict[str, str]:
+        """Upload cover letter as Google Doc"""
+        filename = f"Cover Letter - {letter_type.title()}"
+        return self.upload_document(
+            content=content,
+            filename=filename,
+            folder_id=folder_id,
+            mime_type='application/vnd.google-apps.document'
+        )
+    
+    def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        old_parent_id: Optional[str] = None
+    ):
+        """Move a file to a new folder"""
+        try:
+            # Get current parents if not provided
+            if not old_parent_id:
+                file = self.service.files().get(
+                    fileId=file_id,
+                    fields='parents'
+                ).execute()
+                old_parent_id = ','.join(file.get('parents', []))
+            
+            # Move file
+            self.service.files().update(
+                fileId=file_id,
+                addParents=new_parent_id,
+                removeParents=old_parent_id,
+                fields='id, parents'
+            ).execute()
+            
+            logger.info(f"✅ Moved file {file_id} to folder {new_parent_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error moving file: {e}")
+            raise
+
+
+# Singleton
+_drive_service = None
+
+def get_drive_service() -> GoogleDriveService:
+    global _drive_service
+    if _drive_service is None:
+        _drive_service = GoogleDriveService()
+    return _drive_service
+
+This is getting very long. Should I continue with the remaining phases in a follow-up response? The remaining sections would be:
+
+Phase 4: Job Scraping & Search (with LinkedIn, Indeed scrapers)
+Phase 5: Chrome Extension (the one-click button)
+Phase 6: Document Generation (resume & cover letter building blocks)
+Phase 7: Notification System (email alerts)
+Phase 8: Celery Tasks (async processing)
+Testing & Deployment
+
+Would you like me to:
+
+Continue with all remaining phases in subsequent responses?
+Or should I focus on specific phases you want detailed next?
+
+This guide is already quite comprehensive for the first 3 phases. Let me know how you'd like to proceed!RetryClaude can make mistakes. Please double-check responses.
+

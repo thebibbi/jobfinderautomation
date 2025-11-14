@@ -1,0 +1,1486 @@
+Job Automation System - Part 3: Completion
+Phase 5: Chrome Extension (Continued)
+Step 5.6: Process Job API Endpoint
+The extension needs an endpoint to process jobs. Create backend/app/api/jobs.py and add:
+python@router.post("/process", response_model=JobProcessResponse)
+async def process_job_from_extension(
+    job_data: JobFromExtension,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Process a job from browser extension
+    
+    This is the main endpoint called by the Chrome extension.
+    It will:
+    1. Save job to database
+    2. Trigger analysis
+    3. If score >= threshold, generate documents
+    4. Upload to Google Drive
+    5. Send email notification
+    """
+    try:
+        # Check if job already exists
+        existing_job = db.query(Job).filter(Job.job_url == job_data.jobUrl).first()
+        
+        if existing_job:
+            return {
+                "success": True,
+                "jobId": existing_job.id,
+                "matchScore": existing_job.match_score or 0,
+                "message": "Job already processed",
+                "driveUrl": existing_job.drive_folder_url,
+                "status": existing_job.status
+            }
+        
+        # Create job record
+        job = Job(
+            job_id=f"{job_data.source}_{hash(job_data.jobUrl)}",
+            company=job_data.company,
+            job_title=job_data.jobTitle,
+            job_description=job_data.jobDescription,
+            job_url=job_data.jobUrl,
+            location=job_data.location or "Unknown",
+            salary_min=None,
+            salary_max=None,
+            source=job_data.source,
+            status="processing"
+        )
+        
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        
+        # Queue async processing
+        from ..tasks.job_tasks import process_job_complete_workflow
+        background_tasks.add_task(process_job_complete_workflow, job.id)
+        
+        return {
+            "success": True,
+            "jobId": job.id,
+            "matchScore": 0,  # Will be calculated
+            "message": "Job queued for processing",
+            "status": "processing"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing job from extension: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing job: {str(e)}"
+        )
+Create backend/app/schemas/job.py and add these schemas:
+pythonclass JobFromExtension(BaseModel):
+    jobTitle: str
+    company: str
+    location: Optional[str] = None
+    jobDescription: str
+    jobUrl: str
+    salary: Optional[str] = None
+    source: str
+
+
+class JobProcessResponse(BaseModel):
+    success: bool
+    jobId: int
+    matchScore: float
+    message: str
+    driveUrl: Optional[str] = None
+    status: str
+
+Phase 6: Document Generation (Resume & Cover Letter)
+This is the critical phase for generating high-quality, tailored application materials.
+Step 6.1: Voice Profile Setup
+Create skills/voice_profile.md:
+markdown# [Wife's Name] - Writing Voice Profile
+
+## Writing Style Characteristics
+
+### Tone
+- **Warm but professional** - approachable without being overly casual
+- **Authentic** - genuine enthusiasm comes through naturally
+- **Story-driven** - prefers narrative flow over bullet points
+- **Confident without arrogance** - knows her strengths but stays humble
+
+### Common Phrases She Uses
+- "I'm excited about..." (shows genuine interest)
+- "In my experience..." (connects to teaching background)
+- "I've found that..." (shares learned insights)
+- "What drew me to this role is..." (explains motivation clearly)
+
+### What to AVOID
+- Corporate buzzwords ("synergy", "paradigm shift", "rockstar")
+- Overly formal language ("I am writing to express my interest")
+- Generic enthusiasm ("I'm passionate about everything")
+- Education-heavy jargon when applying to corporate roles
+
+## Sample Writing (Her Actual Words)
+
+### Email Sample 1: Networking
+[Insert actual email she wrote]
+
+### Cover Letter Excerpt She Approved
+[Insert cover letter paragraph she liked]
+
+### Her Transition Story (In Her Words)
+"After 10 years in education, I realized that the skills I developed—analyzing student data to improve outcomes, managing multiple complex projects simultaneously, and collaborating with diverse stakeholders—are exactly what businesses need. My math background gives me the quantitative foundation, and my teaching experience taught me how to communicate complex ideas clearly. I'm not leaving education behind; I'm applying everything I learned to help organizations make better decisions."
+
+## Story Arcs She Connects With
+
+### The Data-Driven Educator
+"As a math teacher, I didn't just teach formulas—I analyzed student performance data to identify learning gaps and adjust my curriculum accordingly. I tracked progress metrics, ran experiments with different teaching approaches, and used A/B testing to see what worked. That's when I realized: this IS business analytics."
+
+### The Project Management Maven
+"Managing a classroom of 30 students is project management at its finest. Multiple simultaneous projects (lesson plans, grading, parent communications), tight deadlines, stakeholder management (students, parents, administration), and constant adaptation when things don't go as planned."
+
+### The Translator
+"In education, I learned to translate complex mathematical concepts for different audiences—from struggling students to gifted learners to skeptical parents. In business, that skill translates to communicating technical findings to non-technical stakeholders."
+
+## Cover Letter Structure She Prefers
+
+### Opening (2-3 sentences)
+- Hook with specific connection to company/role
+- Brief mention of background
+- Clear statement of what she brings
+
+### Body Paragraph 1: The "Why This Role" Story
+- Specific aspect of the job that excites her
+- Connection to her experience
+- Concrete example
+
+### Body Paragraph 2: Transferable Skills Showcase
+- 2-3 key skills from the JD
+- How each shows up in her teaching experience
+- Quantified achievements where possible
+
+### Body Paragraph 3: The Value Add
+- What makes her unique as a career transitioner
+- Fresh perspective
+- Learning agility
+
+### Closing
+- Enthusiasm to discuss further
+- Specific call-to-action
+- Professional but warm sign-off
+
+## Red Flags to Avoid in Generated Content
+
+❌ **Don't write**: "Dear Hiring Manager, I am writing to express my interest..."
+✅ **Instead**: "When I saw [specific thing about the role], I knew I had to apply."
+
+❌ **Don't write**: "I am passionate about data analysis and synergizing teams..."
+✅ **Instead**: "I spent 10 years turning student data into actionable insights that improved learning outcomes by 25%."
+
+❌ **Don't write**: "My teaching experience has given me skills..."
+✅ **Instead**: "Here's what managing 150 students taught me about operations..."
+Step 6.2: Resume Template Service
+Create backend/app/services/template_service.py:
+pythonfrom typing import Dict, Any, List
+from pathlib import Path
+import json
+from loguru import logger
+
+
+class TemplateService:
+    """Manages resume templates and building blocks"""
+    
+    def __init__(self):
+        self.templates_dir = Path(__file__).parent.parent.parent.parent / "resume_templates"
+        self.paragraphs_dir = self.templates_dir / "paragraphs"
+        
+        # Load all building blocks
+        self._load_building_blocks()
+    
+    def _load_building_blocks(self):
+        """Load all resume paragraph building blocks"""
+        self.opening_summaries = self._load_json_files(self.paragraphs_dir / "opening_summaries")
+        self.experience_blocks = self._load_json_files(self.paragraphs_dir / "experience_blocks")
+        self.skills_sections = self._load_json_files(self.paragraphs_dir / "skills_sections")
+        self.achievement_bullets = self._load_json_files(self.paragraphs_dir / "achievements")
+        
+        logger.info("✅ Resume building blocks loaded")
+    
+    def _load_json_files(self, directory: Path) -> List[Dict[str, Any]]:
+        """Load all JSON files from a directory"""
+        if not directory.exists():
+            logger.warning(f"⚠️  Directory not found: {directory}")
+            return []
+        
+        blocks = []
+        for file_path in directory.glob("*.json"):
+            try:
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        blocks.extend(data)
+                    else:
+                        blocks.append(data)
+            except Exception as e:
+                logger.error(f"❌ Error loading {file_path}: {e}")
+        
+        return blocks
+    
+    def select_opening_summary(
+        self,
+        target_role: str,
+        key_skills: List[str]
+    ) -> str:
+        """Select or generate appropriate opening summary"""
+        # Find best matching summary based on role type
+        role_lower = target_role.lower()
+        
+        for summary in self.opening_summaries:
+            if summary.get("role_type", "").lower() in role_lower:
+                # Customize with specific skills
+                template = summary["text"]
+                # You can add logic here to insert key_skills into template
+                return template
+        
+        # Default summary
+        return (
+            "Data-driven professional with 10+ years of experience in analysis, "
+            "project management, and stakeholder collaboration. Proven track record "
+            "of using quantitative methods to drive decision-making and improve outcomes. "
+            "Strong background in mathematics with demonstrated ability to communicate "
+            "complex information to diverse audiences."
+        )
+    
+    def select_experience_blocks(
+        self,
+        required_skills: List[str],
+        max_blocks: int = 3
+    ) -> List[Dict[str, Any]]:
+        """Select most relevant experience blocks based on required skills"""
+        scored_blocks = []
+        
+        for block in self.experience_blocks:
+            # Score each block based on skill match
+            block_skills = set(block.get("skills", []))
+            required_skills_set = set(required_skills)
+            
+            match_count = len(block_skills.intersection(required_skills_set))
+            score = match_count / len(required_skills_set) if required_skills_set else 0
+            
+            scored_blocks.append((score, block))
+        
+        # Sort by score and return top blocks
+        scored_blocks.sort(key=lambda x: x[0], reverse=True)
+        return [block for score, block in scored_blocks[:max_blocks]]
+    
+    def select_achievements(
+        self,
+        keywords: List[str],
+        max_achievements: int = 5
+    ) -> List[str]:
+        """Select achievements that match job keywords"""
+        scored_achievements = []
+        
+        for achievement in self.achievement_bullets:
+            text = achievement.get("text", "").lower()
+            tags = [tag.lower() for tag in achievement.get("tags", [])]
+            
+            # Score based on keyword matches
+            score = sum(
+                1 for keyword in keywords 
+                if keyword.lower() in text or keyword.lower() in tags
+            )
+            
+            if score > 0:
+                scored_achievements.append((score, achievement["text"]))
+        
+        # Sort by score
+        scored_achievements.sort(key=lambda x: x[0], reverse=True)
+        return [text for score, text in scored_achievements[:max_achievements]]
+
+
+# Singleton
+_template_service = None
+
+def get_template_service() -> TemplateService:
+    global _template_service
+    if _template_service is None:
+        _template_service = TemplateService()
+    return _template_service
+Step 6.3: Document Generator Service
+Create backend/app/services/document_generator.py:
+pythonfrom typing import Dict, Any, List
+from loguru import logger
+from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from io import BytesIO
+
+from .claude_service import get_claude_service
+from .template_service import get_template_service
+from ..prompts.resume_generation import RESUME_GENERATION_PROMPT
+from ..prompts.cover_letter import COVER_LETTER_PROMPT
+
+
+class DocumentGenerator:
+    """Generates tailored resumes and cover letters"""
+    
+    def __init__(self):
+        self.claude = get_claude_service()
+        self.templates = get_template_service()
+    
+    async def generate_resume(
+        self,
+        job_data: Dict[str, Any],
+        analysis_results: Dict[str, Any]
+    ) -> bytes:
+        """
+        Generate tailored resume as DOCX
+        
+        Uses building blocks + Claude to create optimized resume
+        """
+        logger.info(f"📄 Generating resume for: {job_data['company']} - {job_data['job_title']}")
+        
+        try:
+            # Extract key information from analysis
+            recommended_skills = analysis_results.get("resume_tailoring", {}).get("skills_to_highlight", [])
+            must_include_achievements = analysis_results.get("resume_tailoring", {}).get("must_include_achievements", [])
+            suggested_summary = analysis_results.get("resume_tailoring", {}).get("suggested_summary", "")
+            
+            # Get building blocks
+            opening_summary = self.templates.select_opening_summary(
+                target_role=job_data["job_title"],
+                key_skills=recommended_skills
+            )
+            
+            experience_blocks = self.templates.select_experience_blocks(
+                required_skills=recommended_skills,
+                max_blocks=3
+            )
+            
+            achievement_bullets = self.templates.select_achievements(
+                keywords=recommended_skills + must_include_achievements,
+                max_achievements=6
+            )
+            
+            # Create Word document
+            doc = Document()
+            
+            # Set margins
+            sections = doc.sections
+            for section in sections:
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
+                section.left_margin = Inches(0.75)
+                section.right_margin = Inches(0.75)
+            
+            # Header - Name and Contact
+            header = doc.add_paragraph()
+            header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            name_run = header.add_run("[Wife's Name]\n")
+            name_run.font.size = Pt(16)
+            name_run.font.bold = True
+            
+            contact_run = header.add_run(
+                "Email: email@example.com | Phone: (555) 123-4567 | "
+                "LinkedIn: linkedin.com/in/profile\n"
+            )
+            contact_run.font.size = Pt(10)
+            
+            # Professional Summary
+            doc.add_heading('Professional Summary', level=1)
+            summary_text = suggested_summary if suggested_summary else opening_summary
+            doc.add_paragraph(summary_text)
+            
+            # Core Competencies
+            doc.add_heading('Core Competencies', level=1)
+            skills_para = doc.add_paragraph()
+            skills_text = " • ".join(recommended_skills[:10])
+            skills_para.add_run(skills_text)
+            
+            # Professional Experience
+            doc.add_heading('Professional Experience', level=1)
+            
+            for block in experience_blocks:
+                # Job title and organization
+                job_para = doc.add_paragraph()
+                job_run = job_para.add_run(f"{block['role']} | {block['organization']}\n")
+                job_run.font.bold = True
+                date_run = job_para.add_run(f"{block['dates']}")
+                date_run.font.italic = True
+                
+                # Responsibilities/achievements
+                for bullet in block.get("bullets", []):
+                    doc.add_paragraph(bullet, style='List Bullet')
+            
+            # Key Achievements
+            if achievement_bullets:
+                doc.add_heading('Key Achievements', level=1)
+                for achievement in achievement_bullets:
+                    doc.add_paragraph(achievement, style='List Bullet')
+            
+            # Education
+            doc.add_heading('Education', level=1)
+            doc.add_paragraph(
+                "Master of Science in Mathematics\n"
+                "[University Name] | [Year]",
+                style='List Bullet'
+            )
+            doc.add_paragraph(
+                "Bachelor of Science in Mathematics & Education\n"
+                "[University Name] | [Year]",
+                style='List Bullet'
+            )
+            
+            # Save to bytes
+            doc_bytes = BytesIO()
+            doc.save(doc_bytes)
+            doc_bytes.seek(0)
+            
+            logger.info("✅ Resume generated successfully")
+            return doc_bytes.read()
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating resume: {e}")
+            raise
+    
+    async def generate_cover_letter(
+        self,
+        job_data: Dict[str, Any],
+        analysis_results: Dict[str, Any],
+        style: str = "conversational"
+    ) -> str:
+        """
+        Generate tailored cover letter
+        
+        Args:
+            job_data: Job information
+            analysis_results: Analysis from Claude
+            style: "conversational" or "formal"
+        """
+        logger.info(f"📝 Generating {style} cover letter for: {job_data['company']}")
+        
+        try:
+            # Load voice profile
+            voice_profile_path = Path(__file__).parent.parent.parent.parent / "skills" / "voice_profile.md"
+            with open(voice_profile_path, 'r') as f:
+                voice_profile = f.read()
+            
+            # Get cover letter guidance from analysis
+            guidance = analysis_results.get("cover_letter_guidance", {})
+            
+            # Build comprehensive prompt
+            full_prompt = f"""
+{voice_profile}
+
+<job_details>
+<company>{job_data['company']}</company>
+<job_title>{job_data['job_title']}</job_title>
+<job_description>
+{job_data['job_description']}
+</job_description>
+</job_details>
+
+<analysis_guidance>
+{json.dumps(guidance, indent=2)}
+</analysis_guidance>
+
+<style>{style}</style>
+
+{COVER_LETTER_PROMPT}
+"""
+            
+            response = self.claude.client.messages.create(
+                model=self.claude.model,
+                max_tokens=self.claude.max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": full_prompt
+                }]
+            )
+            
+            cover_letter = response.content[0].text
+            
+            logger.info(f"✅ {style.title()} cover letter generated")
+            return cover_letter
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating cover letter: {e}")
+            raise
+
+
+# Singleton
+_document_generator = None
+
+def get_document_generator() -> DocumentGenerator:
+    global _document_generator
+    if _document_generator is None:
+        _document_generator = DocumentGenerator()
+    return _document_generator
+Step 6.4: Resume & Cover Letter Prompts
+Create backend/app/prompts/resume_generation.py:
+pythonRESUME_GENERATION_PROMPT = """
+You are an expert resume writer specializing in career transitions from education to corporate roles.
+
+**YOUR TASK:**
+Using the provided building blocks, create a tailored, ATS-optimized resume that highlights transferable skills without sounding like a teacher trying to become something else.
+
+**GUIDELINES:**
+1. **Language**: Use corporate language, not education jargon
+2. **Focus**: Emphasize outcomes, metrics, and business impact
+3. **Structure**: Clean, scannable, ATS-friendly
+4. **Length**: 1-2 pages maximum
+5. **Tone**: Confident, professional, achievement-focused
+
+**WHAT TO EMPHASIZE:**
+- Quantified achievements
+- Business-relevant skills
+- Project management experience
+- Data analysis capabilities
+- Stakeholder management
+- Process improvement
+
+**WHAT TO DE-EMPHASIZE:**
+- Classroom teaching (unless directly relevant)
+- Student-facing work
+- Education-specific terminology
+
+Return the resume content in a structured format that can be easily converted to DOCX.
+"""
+Create backend/app/prompts/cover_letter.py:
+pythonCOVER_LETTER_PROMPT = """
+You are a skilled cover letter writer who helps career transitioners craft authentic, compelling narratives.
+
+**YOUR TASK:**
+Write a cover letter that:
+1. Sounds authentically like the candidate (use voice profile)
+2. Tells a compelling transition story
+3. Connects specific experiences to the role
+4. Addresses potential concerns proactively
+5. Shows genuine enthusiasm without being over-the-top
+
+**STRUCTURE TO FOLLOW:**
+(From voice profile)
+
+**CRITICAL RULES:**
+1. **NO clichés or generic phrases**
+   ❌ "I am writing to express my interest..."
+   ❌ "I am passionate about [buzzword]..."
+   ❌ "I would be a great fit because..."
+
+2. **USE storytelling**
+   ✅ "When I saw that you're looking for someone who can turn data into decisions, I immediately thought of..."
+   ✅ "Here's what 10 years of managing complex projects taught me..."
+
+3. **BE specific**
+   - Name specific things about the company/role
+   - Use concrete examples
+   - Include numbers when possible
+
+4. **SHOW, don't tell**
+   ❌ "I have strong analytical skills"
+   ✅ "I analyzed 5 years of student performance data to identify learning patterns, which led to a 25% improvement in outcomes"
+
+5. **ADDRESS the transition naturally**
+   - Acknowledge it as a strength, not a weakness
+   - Frame teaching experience as business experience
+   - Show awareness of what corporate roles need
+
+**STYLE: {style}**
+- If "conversational": Warm, authentic, story-driven, natural flow
+- If "formal": Professional, structured, but still genuine
+
+**OUTPUT FORMAT:**
+Return only the cover letter text, formatted and ready to use.
+Do not include [bracketed placeholders] - fill in all details.
+Use specific examples from the analysis guidance and voice profile.
+
+Remember: This should sound like HER, not like an AI trying to sound professional.
+"""
+Step 6.5: Resume Building Blocks Setup
+Create the directory structure and sample blocks:
+bashmkdir -p resume_templates/paragraphs/{opening_summaries,experience_blocks,skills_sections,achievements}
+Create resume_templates/paragraphs/opening_summaries/business_analyst.json:
+json[
+  {
+    "role_type": "business_analyst",
+    "text": "Data-driven analyst with 10+ years of experience translating complex information into actionable insights. Proven expertise in statistical analysis, process improvement, and cross-functional collaboration. Strong background in mathematics with demonstrated ability to identify patterns, optimize workflows, and drive data-informed decision-making.",
+    "keywords": ["data analysis", "process improvement", "insights", "optimization"]
+  },
+  {
+    "role_type": "operations",
+    "text": "Results-oriented operations professional with extensive experience managing complex projects, optimizing processes, and driving efficiency improvements. Track record of successfully coordinating multiple stakeholders, implementing data-driven solutions, and delivering measurable results in fast-paced environments.",
+    "keywords": ["operations", "process optimization", "project management", "efficiency"]
+  }
+]
+Create resume_templates/paragraphs/experience_blocks/teaching_as_project_mgmt.json:
+json[
+  {
+    "role": "Mathematics Educator & Data Analyst",
+    "organization": "[School Name]",
+    "dates": "2014 - 2024",
+    "skills": ["project management", "data analysis", "stakeholder management", "process improvement"],
+    "bullets": [
+      "Managed 5+ concurrent projects including curriculum development, assessment design, and parent communication programs, consistently meeting deadlines while maintaining quality standards",
+      "Analyzed student performance data across 150+ students to identify learning gaps and optimize instructional strategies, resulting in 25% improvement in achievement metrics",
+      "Collaborated with cross-functional teams (administration, support staff, parents) to implement data-driven interventions and improve educational outcomes",
+      "Designed and executed A/B testing methodology to evaluate different instructional approaches, using quantitative metrics to guide decision-making"
+    ]
+  }
+]
+Create resume_templates/paragraphs/achievements/quantified_wins.json:
+json[
+  {
+    "text": "Improved student achievement metrics by 25% through data-driven curriculum optimization and targeted interventions",
+    "tags": ["data analysis", "metrics", "improvement", "optimization"]
+  },
+  {
+    "text": "Managed budget of $15K for classroom resources and educational materials, achieving 100% ROI through strategic allocation",
+    "tags": ["budget management", "resource allocation", "ROI"]
+  },
+  {
+    "text": "Led cross-functional team of 6 educators to redesign mathematics curriculum, resulting in 30% increase in student engagement scores",
+    "tags": ["leadership", "cross-functional", "project management"]
+  },
+  {
+    "text": "Developed and maintained comprehensive database tracking 150+ students' academic progress, creating automated reports for stakeholder review",
+    "tags": ["database management", "reporting", "automation", "stakeholders"]
+  }
+]
+
+Phase 7: Notification System
+Step 7.1: Email Service
+Create backend/app/services/email_service.py:
+pythonfrom google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import base64
+from typing import Dict, Any
+from loguru import logger
+
+from ..config import settings
+
+
+class EmailService:
+    """Service for sending email notifications"""
+    
+    def __init__(self):
+        self.sender_email = settings.SENDER_EMAIL
+        self.recipient_email = settings.NOTIFICATION_EMAIL
+        self._init_gmail_service()
+    
+    def _init_gmail_service(self):
+        """Initialize Gmail API service"""
+        try:
+            creds = Credentials.from_authorized_user_file(
+                'credentials/token.json',
+                scopes=['https://www.googleapis.com/auth/gmail.send']
+            )
+            self.service = build('gmail', 'v1', credentials=creds)
+            logger.info("✅ Gmail service initialized")
+        except Exception as e:
+            logger.error(f"❌ Error initializing Gmail: {e}")
+            self.service = None
+    
+    def send_job_analysis_notification(
+        self,
+        job_data: Dict[str, Any],
+        analysis_results: Dict[str, Any],
+        drive_folder_url: str
+    ):
+        """Send email notification after job analysis"""
+        try:
+            match_score = analysis_results.get("match_score", 0)
+            company = job_data.get("company", "Unknown")
+            job_title = job_data.get("job_title", "Unknown")
+            
+            # Determine status
+            if match_score >= 85:
+                status_emoji = "🎯"
+                status_text = "Excellent Match"
+                status_color = "#10B981"
+            elif match_score >= 70:
+                status_emoji = "✅"
+                status_text = "Good Match"
+                status_color = "#3B82F6"
+            elif match_score >= 55:
+                status_emoji = "⚠️"
+                status_text = "Moderate Match"
+                status_color = "#F59E0B"
+            else:
+                status_emoji = "❌"
+                status_text = "Low Match"
+                status_color = "#EF4444"
+            
+            # Build email
+            subject = f"{status_emoji} Job Analysis: {company} - {job_title} ({match_score}%)"
+            
+            # Get key details
+            key_strengths = analysis_results.get("key_strengths", [])[:3]
+            potential_gaps = analysis_results.get("potential_gaps", [])[:3]
+            should_apply = analysis_results.get("should_apply", False)
+            
+            # HTML email body
+            html_body = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                              color: white; padding: 30px; border-radius: 10px 10px 0 0; }}
+                    .header h1 {{ margin: 0; font-size: 24px; }}
+                    .score-badge {{ background: {status_color}; color: white; padding: 10px 20px; 
+                                   border-radius: 20px; display: inline-block; margin-top: 10px; 
+                                   font-size: 18px; font-weight: bold; }}
+                    .content {{ background: #f9fafb; padding: 30px; }}
+                    .section {{ margin-bottom: 25px; }}
+                    .section h2 {{ color: #1a202c; font-size: 18px; margin-bottom: 10px; 
+                                  border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }}
+                    .list-item {{ background: white; padding: 12px; margin-bottom: 8px; 
+                                 border-left: 3px solid #667eea; border-radius: 4px; }}
+                    .cta-button {{ background: #667eea; color: white; padding: 15px 30px; 
+                                  text-decoration: none; border-radius: 8px; display: inline-block;
+                                  margin-top: 20px; font-weight: bold; }}
+                    .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>{status_emoji} Job Analysis Complete</h1>
+                        <p style="margin: 5px 0;">{company}</p>
+                        <p style="margin: 5px 0; font-size: 20px; font-weight: bold;">{job_title}</p>
+                        <div class="score-badge">
+                            {status_text}: {match_score}%
+                        </div>
+                    </div>
+                    
+                    <div class="content">
+                        <div class="section">
+                            <h2>💪 Top Strengths</h2>
+                            {''.join([f'<div class="list-item"><strong>{s.get("strength", "")}</strong><br><small>{s.get("relevance", "")}</small></div>' for s in key_strengths])}
+                        </div>
+                        
+                        <div class="section">
+                            <h2>🔍 Potential Gaps</h2>
+                            {''.join([f'<div class="list-item"><strong>{g.get("gap", "")}</strong> ({g.get("severity", "moderate")})<br><small>{g.get("mitigation", "")}</small></div>' for g in potential_gaps])}
+                        </div>
+                        
+                        <div class="section">
+                            <h2>📋 Recommendation</h2>
+                            <div class="list-item">
+                                <strong>{'✅ Apply' if should_apply else '🤔 Consider carefully'}</strong><br>
+                                <p>{analysis_results.get('reasoning', '')[:300]}...</p>
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center;">
+                            <a href="{drive_folder_url}" class="cta-button">
+                                📁 View Documents in Google Drive
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="footer">
+                        <p>Job Application Automation System</p>
+                        <p>Processed on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            # Send email
+            self._send_email(
+                to_email=self.recipient_email,
+                subject=subject,
+                html_body=html_body
+            )
+            
+            logger.info(f"✅ Email notification sent for {company} - {job_title}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending email notification: {e}")
+    
+    def _send_email(self, to_email: str, subject: str, html_body: str):
+        """Send email via Gmail API"""
+        if not self.service:
+            logger.warning("⚠️  Gmail service not initialized, skipping email")
+            return
+        
+        try:
+            message = MIMEMultipart('alternative')
+            message['To'] = to_email
+            message['From'] = self.sender_email
+            message['Subject'] = subject
+            
+            html_part = MIMEText(html_body, 'html')
+            message.attach(html_part)
+            
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+            
+            self.service.users().messages().send(
+                userId='me',
+                body={'raw': raw_message}
+            ).execute()
+            
+            logger.info(f"✅ Email sent to {to_email}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending email: {e}")
+            raise
+
+
+# Singleton
+_email_service = None
+
+def get_email_service() -> EmailService:
+    global _email_service
+    if _email_service is None:
+        _email_service = EmailService()
+    return _email_service
+
+Phase 8: Celery Tasks (Async Processing)
+Step 8.1: Celery Configuration
+Create backend/app/tasks/celery_app.py:
+pythonfrom celery import Celery
+from ..config import settings
+
+celery_app = Celery(
+    'job_automation',
+    broker=settings.REDIS_URL,
+    backend=settings.REDIS_URL
+)
+
+celery_app.conf.update(
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+    task_track_started=True,
+    task_time_limit=30 * 60,  # 30 minutes
+    task_soft_time_limit=25 * 60,  # 25 minutes
+)
+Step 8.2: Job Processing Tasks
+Create backend/app/tasks/job_tasks.py:
+pythonfrom celery import shared_task
+from loguru import logger
+from datetime import datetime
+
+from .celery_app import celery_app
+from ..database import SessionLocal
+from ..models.job import Job
+from ..models.document import Document, DocumentType
+from ..services.job_analyzer import get_job_analyzer
+from ..services.document_generator import get_document_generator
+from ..services.google_drive_service import get_drive_service
+from ..services.email_service import get_email_service
+from ..config import settings
+
+
+@celery_app.task(name='process_job_complete_workflow')
+def process_job_complete_workflow(job_id: int):
+    """
+    Complete workflow for processing a job:
+    1. Analyze job fit
+    2. If score >= threshold, generate documents
+    3. Upload to Google Drive
+    4. Send email notification
+    """
+    db = SessionLocal()
+    
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            logger.error(f"❌ Job {job_id} not found")
+            return
+        
+        logger.info(f"🚀 Starting complete workflow for job {job_id}: {job.company} - {job.job_title}")
+        
+        # Step 1: Analyze job
+        logger.info("📊 Step 1: Analyzing job fit...")
+        analyzer = get_job_analyzer()
+        analysis_result = analyzer.analyze_job(job_id)
+        
+        match_score = analysis_result['match_score']
+        analysis_data = analysis_result['analysis']
+        
+        logger.info(f"✅ Analysis complete. Match score: {match_score}%")
+        
+        # Step 2: Create Google Drive folder
+        logger.info("📁 Step 2: Creating Google Drive folder...")
+        drive_service = get_drive_service()
+        folder_info = drive_service.create_job_folder(
+            company=job.company,
+            job_title=job.job_title
+        )
+        
+        # Update job with folder info
+        job.drive_folder_id = folder_info['folder_id']
+        job.drive_folder_url = folder_info['folder_url']
+        db.commit()
+        
+        logger.info(f"✅ Folder created: {folder_info['folder_url']}")
+        
+        # Step 3: Upload JD to Drive
+        logger.info("📄 Step 3: Uploading job description...")
+        jd_file = drive_service.upload_job_description(
+            jd_content=job.job_description,
+            folder_id=folder_info['folder_id'],
+            company=job.company,
+            job_title=job.job_title
+        )
+        
+        # Save JD document record
+        jd_doc = Document(
+            job_id=job.id,
+            document_type=DocumentType.JOB_DESCRIPTION,
+            title=f"{job.company} - {job.job_title} - JD",
+            content=job.job_description,
+            drive_file_id=jd_file['file_id'],
+            drive_file_url=jd_file['file_url']
+        )
+        db.add(jd_doc)
+        db.commit()
+        
+        # Step 4: Generate documents if score is high enough
+        if match_score >= settings.MIN_MATCH_SCORE:
+            logger.info(f"📝 Step 4: Generating documents (score {match_score}% >= {settings.MIN_MATCH_SCORE}%)...")
+            
+            doc_generator = get_document_generator()
+            
+            # Generate resume
+            logger.info("   📄 Generating resume...")
+            resume_bytes = await doc_generator.generate_resume(
+                job_data={
+                    'company': job.company,
+                    'job_title': job.job_title,
+                    'job_description': job.job_description
+                },
+                analysis_results=analysis_data
+            )
+            
+            # Upload resume
+            resume_file = drive_service.upload_resume(
+                resume_content=resume_bytes,
+                folder_id=folder_info['folder_id'],
+                filename=f"{job.company} - Resume.pdf"
+            )
+            
+            resume_doc = Document(
+                job_id=job.id,
+                document_type=DocumentType.RESUME,
+                title=f"{job.company} - Resume",
+                content="",  # Binary content
+                drive_file_id=resume_file['file_id'],
+                drive_file_url=resume_file['file_url']
+            )
+            db.add(resume_doc)
+            
+            # Generate conversational cover letter
+            logger.info("   📝 Generating conversational cover letter...")
+            cover_letter_conv = await doc_generator.generate_cover_letter(
+                job_data={
+                    'company': job.company,
+                    'job_title': job.job_title,
+                    'job_description': job.job_description
+                },
+                analysis_results=analysis_data,
+                style="conversational"
+            )
+            
+            cl_conv_file = drive_service.upload_cover_letter(
+                content=cover_letter_conv,
+                folder_id=folder_info['folder_id'],
+                letter_type="conversational"
+            )
+            
+            cl_conv_doc = Document(
+                job_id=job.id,
+                document_type=DocumentType.COVER_LETTER_CONVERSATIONAL,
+                title="Cover Letter - Conversational",
+                content=cover_letter_conv,
+                drive_file_id=cl_conv_file['file_id'],
+                drive_file_url=cl_conv_file['file_url']
+            )
+            db.add(cl_conv_doc)
+            
+            # Generate formal cover letter
+            logger.info("   📝 Generating formal cover letter...")
+            cover_letter_formal = await doc_generator.generate_cover_letter(
+                job_data={
+                    'company': job.company,
+                    'job_title': job.job_title,
+                    'job_description': job.job_description
+                },
+                analysis_results=analysis_data,
+                style="formal"
+            )
+            
+            cl_formal_file = drive_service.upload_cover_letter(
+                content=cover_letter_formal,
+                folder_id=folder_info['folder_id'],
+                letter_type="formal"
+            )
+            
+            cl_formal_doc = Document(
+                job_id=job.id,
+                document_type=DocumentType.COVER_LETTER_FORMAL,
+                title="Cover Letter - Formal",
+                content=cover_letter_formal,
+                drive_file_id=cl_formal_file['file_id'],
+                drive_file_url=cl_formal_file['file_url']
+            )
+            db.add(cl_formal_doc)
+            
+            job.status = "documents_generated"
+            logger.info("✅ All documents generated and uploaded")
+        else:
+            logger.info(f"⏭️  Skipping document generation (score {match_score}% < {settings.MIN_MATCH_SCORE}%)")
+            job.status = "analyzed_low_score"
+        
+        db.commit()
+        
+        # Step 5: Send email notification
+        logger.info("📧 Step 5: Sending email notification...")
+        email_service = get_email_service()
+        email_service.send_job_analysis_notification(
+            job_data={
+                'company': job.company,
+                'job_title': job.job_title,
+                'job_url': job.job_url
+            },
+            analysis_results=analysis_data,
+            drive_folder_url=folder_info['folder_url']
+        )
+        
+        logger.info(f"🎉 Complete workflow finished for job {job_id}")
+        
+        return {
+            'job_id': job_id,
+            'match_score': match_score,
+            'drive_url': folder_info['folder_url'],
+            'status': job.status
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in complete workflow for job {job_id}: {e}")
+        if job:
+            job.status = "error"
+            db.commit()
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name='analyze_job_task')
+def analyze_job_task(job_id: int):
+    """Simple task to just analyze a job"""
+    analyzer = get_job_analyzer()
+    return analyzer.analyze_job(job_id)
+
+Phase 9: Testing & Deployment
+Step 9.1: Testing Scripts
+Create scripts/test_claude_connection.py:
+python"""Test Claude API connection and job analysis"""
+
+import asyncio
+from pathlib import Path
+import sys
+
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+
+from app.services.claude_service import get_claude_service
+
+
+async def test_claude_connection():
+    """Test basic Claude connection"""
+    print("🧪 Testing Claude API connection...")
+    
+    try:
+        claude = get_claude_service()
+        print("✅ Claude service initialized")
+        
+        # Test simple analysis
+        print("\n🧪 Testing job analysis...")
+        result = await claude.analyze_job_fit(
+            job_description="""
+            We're looking for a Business Analyst to join our team.
+            
+            Responsibilities:
+            - Analyze business data to identify trends and insights
+            - Create reports and dashboards for stakeholders
+            - Collaborate with cross-functional teams
+            - Improve business processes
+            
+            Requirements:
+            - 3+ years of analytical experience
+            - Strong Excel and SQL skills
+            - Excellent communication skills
+            - Bachelor's degree required
+            """,
+            company="Test Company",
+            job_title="Business Analyst"
+        )
+        
+        print(f"\n✅ Analysis complete!")
+        print(f"   Match Score: {result.get('match_score')}%")
+        print(f"   Should Apply: {result.get('should_apply')}")
+        print(f"   Key Strengths: {len(result.get('key_strengths', []))}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    success = asyncio.run(test_claude_connection())
+    sys.exit(0 if success else 1)
+Step 9.2: Docker Setup
+Create backend/Dockerfile:
+dockerfileFROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    wget \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Chrome for Selenium
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p credentials skills resume_templates
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+Create docker-compose.yml in root:
+yamlversion: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./skills:/app/skills
+      - ./resume_templates:/app/resume_templates
+      - ./credentials:/app/credentials
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build: ./backend
+    volumes:
+      - ./backend:/app
+      - ./skills:/app/skills
+      - ./resume_templates:/app/resume_templates
+      - ./credentials:/app/credentials
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+
+volumes:
+  redis_data:
+Step 9.3: Running the System
+Create README.md with usage instructions:
+markdown# Job Application Automation System
+
+## Setup
+
+### 1. Install Dependencies
+```bash
+# Backend
+cd backend
+pip install -r requirements.txt
+
+# Chrome Extension (for development)
+# No installation needed - load as unpacked extension
+```
+
+### 2. Configure Environment
+
+Copy `.env.example` to `.env` and fill in your API keys:
+```bash
+cp .env.example .env
+```
+
+### 3. Set Up Google Authentication
+```bash
+python scripts/setup_google_auth.py
+```
+
+### 4. Initialize Database
+```bash
+cd backend
+python -c "from app.database import init_db; init_db()"
+```
+
+### 5. Start Services
+
+**Option A: Docker (Recommended)**
+```bash
+docker-compose up
+```
+
+**Option B: Local Development**
+```bash
+# Terminal 1: Redis
+redis-server
+
+# Terminal 2: Backend
+cd backend
+uvicorn app.main:app --reload
+
+# Terminal 3: Celery Worker
+cd backend
+celery -A app.tasks.celery_app worker --loglevel=info
+```
+
+## Usage
+
+### Chrome Extension
+
+1. Open Chrome and go to `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select the `extension` folder
+5. Navigate to a job posting (LinkedIn, Indeed, etc.)
+6. Click the "Analyze Job" button that appears
+
+### API Testing
+```bash
+# Test Claude connection
+python scripts/test_claude_connection.py
+
+# Test scraping
+curl -X POST http://localhost:8000/api/v1/scraping/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "job_titles": ["Business Analyst"],
+    "locations": ["Remote"],
+    "sources": ["linkedin"],
+    "max_per_source": 10
+  }'
+```
+
+### Web Dashboard (Coming Soon)
+
+Access at: `http://localhost:8000/dashboard`
+
+## Workflow
+
+1. **Find Job**: Browse job boards normally
+2. **Click Button**: Click extension button on job page
+3. **Wait**: System processes in background (~2-3 minutes)
+4. **Get Email**: Receive notification with analysis & documents
+5. **Review**: Check Google Drive folder with all materials
+6. **Apply**: Use generated documents to apply
+
+## Cost Estimates
+
+- **Claude API**: ~$1-2 per job analysis
+- **Google Cloud**: Free tier sufficient
+- **Hosting**: Free (local) or $10/month (cloud)
+
+**Monthly estimate (50 jobs)**: $50-100
+
+## Troubleshooting
+
+**Extension not appearing**: Check that you're on a supported job board page
+
+**"API error"**: Ensure backend is running on `http://localhost:8000`
+
+**"No documents generated"**: Check match score - documents only generated for 70%+ matches
+
+**Email not sending**: Verify Gmail API credentials and permissions
+
+## Support
+
+For issues, check logs:
+- Backend: Terminal running uvicorn
+- Celery: Terminal running celery worker
+- Extension: Chrome DevTools console
+
+Final Deployment Checklist
+Create docs/DEPLOYMENT.md:
+markdown# Deployment Guide
+
+## Pre-Deployment Checklist
+
+- [ ] All API keys configured in `.env`
+- [ ] Google OAuth credentials set up
+- [ ] Gmail API enabled and tested
+- [ ] Google Drive folder structure created
+- [ ] Skills files populated (experience_inventory.csv, etc.)
+- [ ] Voice profile created
+- [ ] Resume building blocks populated
+- [ ] Test Claude connection successful
+- [ ] Test scraping on at least one job board
+- [ ] Test complete workflow end-to-end
+
+## Cloud Deployment (Railway.app)
+
+### 1. Prepare for Deployment
+```bash
+# Create railway.json
+{
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "backend/Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+### 2. Deploy to Railway
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login
+railway login
+
+# Create project
+railway init
+
+# Add Redis
+railway add -d redis
+
+# Deploy
+railway up
+```
+
+### 3. Configure Environment Variables
+
+In Railway dashboard, add all variables from `.env`
+
+### 4. Deploy Celery Worker
+
+Create separate service for Celery worker with same code but different start command:
+```bash
+celery -A app.tasks.celery_app worker --loglevel=info
+```
+
+## Monitoring
+
+- **Logs**: Railway dashboard or `railway logs`
+- **Errors**: Set up Sentry for error tracking
+- **Performance**: Monitor API response times
+
+## Maintenance
+
+### Weekly
+- [ ] Review failed jobs in database
+- [ ] Check email delivery success rate
+- [ ] Review match score distribution
+
+### Monthly
+- [ ] Update resume building blocks with new achievements
+- [ ] Refine Claude prompts based on feedback
+- [ ] Review API costs and optimize
+- [ ] Update job board scrapers if sites change
+
+## Scaling Considerations
+
+**When to scale:**
+- Processing > 200 jobs/day
+- Email queue backing up
+- Scraping taking too long
+
+**How to scale:**
+- Add more Celery workers
+- Implement job queue prioritization
+- Use PostgreSQL instead of SQLite
+- Cache semantic embeddings
+
+Key Improvements & Recommendations
+Implemented Improvements:
+
+✅ Eliminated Kick Resume Step: Claude generates resumes directly using building blocks
+✅ Better Cover Letters: Voice profile + building blocks approach
+✅ Job Tracking: All jobs tracked in database + can export to Google Sheets
+✅ Smart Pre-Filtering: Semantic matching filters jobs before Claude analysis
+✅ Batch Processing: Scraper can find multiple jobs at once
+✅ One-Click Workflow: Chrome extension → automated processing → email notification
+
+Additional Recommendations:
+
+Feedback Loop: Track which applications get responses and adjust scoring
+A/B Testing: Test different cover letter styles and track success rates
+Learning System: Use successful applications to refine prompts
+Mobile App: Process jobs from phone (future enhancement)
+Network Analysis: Find connections at target companies via LinkedIn
+
+
+Next Steps for Vibe Coding
+When you start your vibe coding session, follow this sequence:
+Phase 1: Core Setup (2-3 hours)
+bash1. Create project structure
+2. Set up .env file
+3. Install backend dependencies
+4. Initialize database
+5. Test Claude connection
+Phase 2: Integration (3-4 hours)
+bash1. Implement Claude service with your existing skill
+2. Create job analysis endpoint
+3. Test analysis with sample JD
+4. Set up Google Drive integration
+5. Test document upload
+Phase 3: Document Generation (2-3 hours)
+bash1. Create voice profile with wife's actual writing samples
+2. Populate resume building blocks
+3. Implement document generator
+4. Test resume + cover letter generation
+5. Refine prompts based on output
+Phase 4: Automation (2-3 hours)
+bash1. Build Chrome extension
+2. Create process job endpoint
+3. Set up Celery for async processing
+4. Implement email notifications
+5. Test complete workflow
+Phase 5: Polish & Deploy (2-3 hours)
+bash1. Add error handling
+2. Implement logging
+3. Create Docker setup
+4. Deploy to Railway
+5. Test in production

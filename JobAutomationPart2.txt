@@ -1,0 +1,1472 @@
+Phase 4: Job Scraping & Search with Semantic Matching
+This phase enables automated job discovery and intelligent matching.
+Step 4.1: Semantic Matching Setup
+Create backend/app/services/semantic_matcher.py:
+pythonfrom sentence_transformers import SentenceTransformer, util
+import numpy as np
+from typing import List, Dict, Any, Tuple
+from loguru import logger
+import torch
+
+from ..config import settings
+
+
+class SemanticMatcher:
+    """
+    Semantic matching service for job-candidate alignment
+    Uses sentence transformers to compute similarity
+    """
+    
+    def __init__(self):
+        # Use a model optimized for semantic search
+        self.model_name = 'all-MiniLM-L6-v2'  # Fast and effective
+        logger.info(f"🤖 Loading semantic model: {self.model_name}")
+        self.model = SentenceTransformer(self.model_name)
+        
+        # Cache for candidate profile embedding
+        self._candidate_embedding = None
+        self._candidate_profile = None
+    
+    def _build_candidate_profile(self) -> str:
+        """
+        Build comprehensive candidate profile from reference materials
+        """
+        from pathlib import Path
+        import csv
+        
+        skills_path = Path(__file__).parent.parent.parent.parent / "skills" / "job-match-analyzer"
+        
+        profile_parts = []
+        
+        # Load experience inventory
+        try:
+            with open(skills_path / "experience_inventory.csv", 'r') as f:
+                reader = csv.DictReader(f)
+                experiences = list(reader)
+                profile_parts.append("EXPERIENCE:")
+                for exp in experiences:
+                    profile_parts.append(f"- {exp.get('role', '')} at {exp.get('organization', '')}: {exp.get('responsibilities', '')}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load experience inventory: {e}")
+        
+        # Load skills taxonomy
+        try:
+            with open(skills_path / "skills_taxonomy.csv", 'r') as f:
+                reader = csv.DictReader(f)
+                skills = list(reader)
+                profile_parts.append("\nSKILLS:")
+                skill_list = [s.get('skill', '') for s in skills if s.get('skill')]
+                profile_parts.append(", ".join(skill_list))
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load skills taxonomy: {e}")
+        
+        # Load achievements
+        try:
+            with open(skills_path / "achievement_library.csv", 'r') as f:
+                reader = csv.DictReader(f)
+                achievements = list(reader)
+                profile_parts.append("\nACHIEVEMENTS:")
+                for ach in achievements[:10]:  # Top 10 achievements
+                    profile_parts.append(f"- {ach.get('achievement', '')}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load achievements: {e}")
+        
+        # Add target roles and preferences
+        profile_parts.append("\nTARGET ROLES:")
+        profile_parts.append("Business Analyst, Operations Analyst, Operations Manager, Risk Analyst, Product Manager, L&D Manager")
+        
+        profile_parts.append("\nCARE TRANSITION:")
+        profile_parts.append("Transitioning from education sector to corporate roles. Strong quantitative background with Masters in Mathematics. Experience in data analysis, project management, stakeholder communication, and process improvement.")
+        
+        return "\n".join(profile_parts)
+    
+    def get_candidate_embedding(self) -> np.ndarray:
+        """Get or create candidate profile embedding"""
+        if self._candidate_embedding is None:
+            profile = self._build_candidate_profile()
+            logger.info("🔄 Creating candidate profile embedding...")
+            self._candidate_embedding = self.model.encode(
+                profile,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            self._candidate_profile = profile
+            logger.info("✅ Candidate embedding created")
+        
+        return self._candidate_embedding
+    
+    def compute_job_similarity(
+        self,
+        job_title: str,
+        job_description: str,
+        company: str = ""
+    ) -> float:
+        """
+        Compute semantic similarity between job and candidate
+        
+        Returns:
+            Similarity score (0-100)
+        """
+        try:
+            # Build job text
+            job_text = f"JOB TITLE: {job_title}\n"
+            if company:
+                job_text += f"COMPANY: {company}\n"
+            job_text += f"DESCRIPTION: {job_description}"
+            
+            # Get embeddings
+            candidate_emb = self.get_candidate_embedding()
+            job_emb = self.model.encode(
+                job_text,
+                convert_to_tensor=True,
+                show_progress_bar=False
+            )
+            
+            # Compute cosine similarity
+            similarity = util.cos_sim(candidate_emb, job_emb)[0][0].item()
+            
+            # Convert to 0-100 scale
+            score = similarity * 100
+            
+            logger.debug(f"📊 Semantic similarity for '{job_title}': {score:.2f}%")
+            
+            return score
+            
+        except Exception as e:
+            logger.error(f"❌ Error computing similarity: {e}")
+            return 0.0
+    
+    def rank_jobs(
+        self,
+        jobs: List[Dict[str, Any]],
+        min_score: float = 30.0
+    ) -> List[Tuple[Dict[str, Any], float]]:
+        """
+        Rank jobs by semantic similarity
+        
+        Args:
+            jobs: List of job dictionaries with 'job_title' and 'job_description'
+            min_score: Minimum similarity score to include
+            
+        Returns:
+            List of (job, score) tuples, sorted by score descending
+        """
+        scored_jobs = []
+        
+        for job in jobs:
+            score = self.compute_job_similarity(
+                job_title=job.get('job_title', ''),
+                job_description=job.get('job_description', ''),
+                company=job.get('company', '')
+            )
+            
+            if score >= min_score:
+                scored_jobs.append((job, score))
+        
+        # Sort by score descending
+        scored_jobs.sort(key=lambda x: x[1], reverse=True)
+        
+        return scored_jobs
+
+
+# Singleton
+_semantic_matcher = None
+
+def get_semantic_matcher() -> SemanticMatcher:
+    global _semantic_matcher
+    if _semantic_matcher is None:
+        _semantic_matcher = SemanticMatcher()
+    return _semantic_matcher
+Step 4.2: Base Scraper Class
+Create backend/app/scrapers/base_scraper.py:
+pythonfrom abc import ABC, abstractmethod
+from typing import List, Dict, Any, Optional
+from loguru import logger
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+
+
+class BaseScraper(ABC):
+    """Base class for job board scrapers"""
+    
+    def __init__(self, headless: bool = True):
+        self.headless = headless
+        self.driver = None
+    
+    def _init_driver(self):
+        """Initialize Selenium WebDriver"""
+        if self.driver is not None:
+            return
+        
+        chrome_options = Options()
+        if self.headless:
+            chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        
+        service = Service(ChromeDriverManager().install())
+        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        logger.info("✅ WebDriver initialized")
+    
+    def _close_driver(self):
+        """Close WebDriver"""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
+            logger.info("✅ WebDriver closed")
+    
+    def _wait_for_element(
+        self,
+        by: By,
+        value: str,
+        timeout: int = 10
+    ):
+        """Wait for element to be present"""
+        return WebDriverWait(self.driver, timeout).until(
+            EC.presence_of_element_located((by, value))
+        )
+    
+    def _safe_find_element(
+        self,
+        element,
+        by: By,
+        value: str,
+        default: str = ""
+    ) -> str:
+        """Safely find element and return text"""
+        try:
+            found = element.find_element(by, value)
+            return found.text.strip()
+        except:
+            return default
+    
+    @abstractmethod
+    def search_jobs(
+        self,
+        keywords: List[str],
+        location: str = "Remote",
+        max_results: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for jobs on the platform
+        
+        Returns:
+            List of job dictionaries with keys:
+            - job_title
+            - company
+            - location
+            - job_url
+            - job_description
+            - salary (optional)
+            - source
+        """
+        pass
+    
+    @abstractmethod
+    def extract_job_details(self, job_url: str) -> Dict[str, Any]:
+        """Extract full job details from job page"""
+        pass
+    
+    def __enter__(self):
+        """Context manager entry"""
+        self._init_driver()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self._close_driver()
+Step 4.3: LinkedIn Scraper
+Create backend/app/scrapers/linkedin_scraper.py:
+pythonfrom typing import List, Dict, Any
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from loguru import logger
+import time
+import urllib.parse
+
+from .base_scraper import BaseScraper
+
+
+class LinkedInScraper(BaseScraper):
+    """LinkedIn job scraper"""
+    
+    BASE_URL = "https://www.linkedin.com/jobs/search"
+    
+    def search_jobs(
+        self,
+        keywords: List[str],
+        location: str = "Remote",
+        max_results: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Search LinkedIn jobs
+        
+        Note: LinkedIn has rate limiting and may require login for full access.
+        This scraper works for public job listings.
+        """
+        self._init_driver()
+        
+        all_jobs = []
+        
+        for keyword in keywords:
+            logger.info(f"🔍 Searching LinkedIn for: {keyword} in {location}")
+            
+            # Build search URL
+            params = {
+                'keywords': keyword,
+                'location': location,
+                'f_TPR': 'r604800',  # Past week
+                'f_WT': '2',  # Remote jobs
+                'position': 1,
+                'pageNum': 0
+            }
+            
+            search_url = f"{self.BASE_URL}?{urllib.parse.urlencode(params)}"
+            
+            try:
+                self.driver.get(search_url)
+                time.sleep(3)  # Let page load
+                
+                # Find job cards
+                job_cards = self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "div.base-card"
+                )
+                
+                logger.info(f"📊 Found {len(job_cards)} job listings")
+                
+                for card in job_cards[:max_results]:
+                    try:
+                        job = self._parse_job_card(card)
+                        if job:
+                            all_jobs.append(job)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error parsing job card: {e}")
+                        continue
+                    
+                    if len(all_jobs) >= max_results:
+                        break
+                
+            except Exception as e:
+                logger.error(f"❌ Error searching LinkedIn: {e}")
+        
+        logger.info(f"✅ Scraped {len(all_jobs)} jobs from LinkedIn")
+        return all_jobs
+    
+    def _parse_job_card(self, card) -> Dict[str, Any]:
+        """Parse individual job card"""
+        try:
+            # Extract job title
+            title_elem = card.find_element(By.CSS_SELECTOR, "h3.base-search-card__title")
+            job_title = title_elem.text.strip()
+            
+            # Extract company
+            company_elem = card.find_element(By.CSS_SELECTOR, "h4.base-search-card__subtitle")
+            company = company_elem.text.strip()
+            
+            # Extract location
+            location_elem = card.find_element(By.CSS_SELECTOR, "span.job-search-card__location")
+            location = location_elem.text.strip()
+            
+            # Extract job URL
+            link_elem = card.find_element(By.CSS_SELECTOR, "a.base-card__full-link")
+            job_url = link_elem.get_attribute('href')
+            
+            # Get job ID from URL
+            job_id = self._extract_job_id_from_url(job_url)
+            
+            return {
+                'job_id': f"linkedin_{job_id}",
+                'job_title': job_title,
+                'company': company,
+                'location': location,
+                'job_url': job_url,
+                'job_description': '',  # Will be filled by extract_job_details
+                'source': 'linkedin',
+                'remote_type': 'remote' if 'remote' in location.lower() else 'onsite'
+            }
+            
+        except NoSuchElementException as e:
+            logger.warning(f"⚠️ Missing element in job card: {e}")
+            return None
+    
+    def extract_job_details(self, job_url: str) -> Dict[str, Any]:
+        """Extract full job description"""
+        self._init_driver()
+        
+        try:
+            self.driver.get(job_url)
+            time.sleep(2)
+            
+            # Wait for job description
+            desc_elem = self._wait_for_element(
+                By.CSS_SELECTOR,
+                "div.show-more-less-html__markup",
+                timeout=10
+            )
+            
+            job_description = desc_elem.text.strip()
+            
+            # Try to get salary if available
+            salary = None
+            try:
+                salary_elem = self.driver.find_element(
+                    By.CSS_SELECTOR,
+                    "span.compensation__salary"
+                )
+                salary = salary_elem.text.strip()
+            except NoSuchElementException:
+                pass
+            
+            return {
+                'job_description': job_description,
+                'salary': salary
+            }
+            
+        except TimeoutException:
+            logger.error(f"❌ Timeout loading job details from {job_url}")
+            return {'job_description': '', 'salary': None}
+    
+    def _extract_job_id_from_url(self, url: str) -> str:
+        """Extract job ID from LinkedIn URL"""
+        try:
+            # LinkedIn URLs typically: https://www.linkedin.com/jobs/view/123456789/
+            parts = url.split('/')
+            for i, part in enumerate(parts):
+                if part == 'view' and i + 1 < len(parts):
+                    return parts[i + 1]
+            return url.split('?')[0].split('/')[-1]
+        except:
+            return url
+Step 4.4: Indeed Scraper
+Create backend/app/scrapers/indeed_scraper.py:
+pythonfrom typing import List, Dict, Any
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from loguru import logger
+import time
+import urllib.parse
+
+from .base_scraper import BaseScraper
+
+
+class IndeedScraper(BaseScraper):
+    """Indeed job scraper"""
+    
+    BASE_URL = "https://www.indeed.com/jobs"
+    
+    def search_jobs(
+        self,
+        keywords: List[str],
+        location: str = "Remote",
+        max_results: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Search Indeed jobs"""
+        self._init_driver()
+        
+        all_jobs = []
+        
+        for keyword in keywords:
+            logger.info(f"🔍 Searching Indeed for: {keyword} in {location}")
+            
+            # Build search URL
+            params = {
+                'q': keyword,
+                'l': location,
+                'fromage': 7,  # Past week
+                'remotejob': '032b3046-06a3-4876-8dfd-474eb5e7ed11',  # Remote filter
+                'sort': 'date'
+            }
+            
+            search_url = f"{self.BASE_URL}?{urllib.parse.urlencode(params)}"
+            
+            try:
+                self.driver.get(search_url)
+                time.sleep(3)
+                
+                # Find job cards
+                job_cards = self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "div.job_seen_beacon"
+                )
+                
+                logger.info(f"📊 Found {len(job_cards)} job listings")
+                
+                for card in job_cards[:max_results]:
+                    try:
+                        job = self._parse_job_card(card)
+                        if job:
+                            all_jobs.append(job)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error parsing job card: {e}")
+                        continue
+                    
+                    if len(all_jobs) >= max_results:
+                        break
+                
+            except Exception as e:
+                logger.error(f"❌ Error searching Indeed: {e}")
+        
+        logger.info(f"✅ Scraped {len(all_jobs)} jobs from Indeed")
+        return all_jobs
+    
+    def _parse_job_card(self, card) -> Dict[str, Any]:
+        """Parse individual job card"""
+        try:
+            # Extract job title
+            title_elem = card.find_element(By.CSS_SELECTOR, "h2.jobTitle span")
+            job_title = title_elem.text.strip()
+            
+            # Extract company
+            company_elem = card.find_element(By.CSS_SELECTOR, "span.companyName")
+            company = company_elem.text.strip()
+            
+            # Extract location
+            location_elem = card.find_element(By.CSS_SELECTOR, "div.companyLocation")
+            location = location_elem.text.strip()
+            
+            # Extract job URL
+            link_elem = card.find_element(By.CSS_SELECTOR, "a.jcs-JobTitle")
+            job_url = "https://www.indeed.com" + link_elem.get_attribute('href')
+            
+            # Get job ID from data attribute
+            job_id = card.get_attribute('data-jk') or self._extract_job_id_from_url(job_url)
+            
+            # Try to get salary
+            salary = None
+            try:
+                salary_elem = card.find_element(By.CSS_SELECTOR, "div.salary-snippet")
+                salary = salary_elem.text.strip()
+            except NoSuchElementException:
+                pass
+            
+            return {
+                'job_id': f"indeed_{job_id}",
+                'job_title': job_title,
+                'company': company,
+                'location': location,
+                'job_url': job_url,
+                'job_description': '',
+                'salary': salary,
+                'source': 'indeed',
+                'remote_type': 'remote' if 'remote' in location.lower() else 'onsite'
+            }
+            
+        except NoSuchElementException as e:
+            logger.warning(f"⚠️ Missing element in job card: {e}")
+            return None
+    
+    def extract_job_details(self, job_url: str) -> Dict[str, Any]:
+        """Extract full job description"""
+        self._init_driver()
+        
+        try:
+            self.driver.get(job_url)
+            time.sleep(2)
+            
+            # Wait for job description
+            desc_elem = self._wait_for_element(
+                By.CSS_SELECTOR,
+                "div#jobDescriptionText",
+                timeout=10
+            )
+            
+            job_description = desc_elem.text.strip()
+            
+            return {
+                'job_description': job_description
+            }
+            
+        except TimeoutException:
+            logger.error(f"❌ Timeout loading job details from {job_url}")
+            return {'job_description': ''}
+    
+    def _extract_job_id_from_url(self, url: str) -> str:
+        """Extract job ID from Indeed URL"""
+        try:
+            # Indeed URLs typically: https://www.indeed.com/viewjob?jk=abc123
+            if 'jk=' in url:
+                return url.split('jk=')[1].split('&')[0]
+            return url.split('?')[0].split('/')[-1]
+        except:
+            return url
+Step 4.5: Scraper Service
+Create backend/app/services/scraper_service.py:
+pythonfrom typing import List, Dict, Any
+from loguru import logger
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from ..scrapers.linkedin_scraper import LinkedInScraper
+from ..scrapers.indeed_scraper import IndeedScraper
+from .semantic_matcher import get_semantic_matcher
+from ..models.job import Job
+from ..database import SessionLocal
+
+
+class ScraperService:
+    """Orchestrates job scraping across multiple platforms"""
+    
+    def __init__(self):
+        self.semantic_matcher = get_semantic_matcher()
+    
+    def scrape_jobs(
+        self,
+        job_titles: List[str],
+        locations: List[str] = ["Remote"],
+        sources: List[str] = ["linkedin", "indeed"],
+        max_per_source: int = 25,
+        min_semantic_score: float = 40.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Scrape jobs from multiple sources
+        
+        Args:
+            job_titles: List of job titles to search for
+            locations: List of locations
+            sources: Which job boards to scrape
+            max_per_source: Max results per source
+            min_semantic_score: Minimum semantic similarity score
+            
+        Returns:
+            List of job dictionaries
+        """
+        all_jobs = []
+        
+        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+            futures = []
+            
+            # Submit scraping tasks
+            for source in sources:
+                future = executor.submit(
+                    self._scrape_source,
+                    source,
+                    job_titles,
+                    locations,
+                    max_per_source
+                )
+                futures.append(future)
+            
+            # Collect results
+            for future in as_completed(futures):
+                try:
+                    jobs = future.result()
+                    all_jobs.extend(jobs)
+                except Exception as e:
+                    logger.error(f"❌ Error in scraping task: {e}")
+        
+        logger.info(f"📊 Total jobs scraped: {len(all_jobs)}")
+        
+        # Remove duplicates based on job_url
+        unique_jobs = {job['job_url']: job for job in all_jobs}.values()
+        logger.info(f"📊 Unique jobs after deduplication: {len(unique_jobs)}")
+        
+        # Semantic filtering
+        logger.info("🔍 Performing semantic matching...")
+        ranked_jobs = self.semantic_matcher.rank_jobs(
+            list(unique_jobs),
+            min_score=min_semantic_score
+        )
+        
+        # Add semantic scores
+        filtered_jobs = []
+        for job, score in ranked_jobs:
+            job['semantic_score'] = score
+            filtered_jobs.append(job)
+        
+        logger.info(f"✅ {len(filtered_jobs)} jobs passed semantic filter (min score: {min_semantic_score})")
+        
+        return filtered_jobs
+    
+    def _scrape_source(
+        self,
+        source: str,
+        job_titles: List[str],
+        locations: List[str],
+        max_results: int
+    ) -> List[Dict[str, Any]]:
+        """Scrape from a single source"""
+        try:
+            if source == "linkedin":
+                with LinkedInScraper(headless=True) as scraper:
+                    jobs = scraper.search_jobs(
+                        keywords=job_titles,
+                        location=locations[0],
+                        max_results=max_results
+                    )
+                    return jobs
+            
+            elif source == "indeed":
+                with IndeedScraper(headless=True) as scraper:
+                    jobs = scraper.search_jobs(
+                        keywords=job_titles,
+                        location=locations[0],
+                        max_results=max_results
+                    )
+                    return jobs
+            
+            else:
+                logger.warning(f"⚠️ Unknown source: {source}")
+                return []
+        
+        except Exception as e:
+            logger.error(f"❌ Error scraping {source}: {e}")
+            return []
+    
+    def save_scraped_jobs(self, jobs: List[Dict[str, Any]]) -> List[int]:
+        """
+        Save scraped jobs to database
+        
+        Returns:
+            List of created job IDs
+        """
+        db = SessionLocal()
+        created_ids = []
+        
+        try:
+            for job_data in jobs:
+                # Check if job already exists
+                existing = db.query(Job).filter(
+                    Job.job_url == job_data['job_url']
+                ).first()
+                
+                if existing:
+                    logger.debug(f"⏭️  Job already exists: {job_data['job_title']}")
+                    continue
+                
+                # Create new job
+                job = Job(
+                    job_id=job_data.get('job_id', ''),
+                    company=job_data['company'],
+                    job_title=job_data['job_title'],
+                    job_description=job_data.get('job_description', ''),
+                    job_url=job_data['job_url'],
+                    location=job_data.get('location', ''),
+                    source=job_data['source'],
+                    remote_type=job_data.get('remote_type', 'unknown'),
+                    status='discovered'
+                )
+                
+                db.add(job)
+                db.flush()
+                created_ids.append(job.id)
+                
+                logger.info(f"✅ Saved job: {job.company} - {job.job_title}")
+            
+            db.commit()
+            logger.info(f"✅ Saved {len(created_ids)} new jobs to database")
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving jobs: {e}")
+            db.rollback()
+            raise
+        finally:
+            db.close()
+        
+        return created_ids
+
+
+# Singleton
+_scraper_service = None
+
+def get_scraper_service() -> ScraperService:
+    global _scraper_service
+    if _scraper_service is None:
+        _scraper_service = ScraperService()
+    return _scraper_service
+Step 4.6: Scraping API Endpoint
+Create backend/app/api/scraping.py:
+pythonfrom fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+
+from ..services.scraper_service import get_scraper_service
+from ..config import settings
+
+router = APIRouter()
+
+
+class ScrapeRequest(BaseModel):
+    job_titles: Optional[List[str]] = None
+    locations: Optional[List[str]] = None
+    sources: List[str] = ["linkedin", "indeed"]
+    max_per_source: int = 25
+    min_semantic_score: float = 40.0
+    auto_analyze: bool = False  # Automatically trigger analysis for matched jobs
+
+
+@router.post("/search")
+async def search_jobs(request: ScrapeRequest, background_tasks: BackgroundTasks):
+    """
+    Search for jobs across multiple platforms
+    
+    This will:
+    1. Scrape jobs from specified sources
+    2. Perform semantic matching against candidate profile
+    3. Save matched jobs to database
+    4. Optionally trigger analysis for high-scoring jobs
+    """
+    try:
+        scraper = get_scraper_service()
+        
+        # Use defaults if not provided
+        job_titles = request.job_titles or settings.job_titles_list
+        locations = request.locations or settings.locations_list
+        
+        # Scrape jobs
+        jobs = scraper.scrape_jobs(
+            job_titles=job_titles,
+            locations=locations,
+            sources=request.sources,
+            max_per_source=request.max_per_source,
+            min_semantic_score=request.min_semantic_score
+        )
+        
+        # Save to database
+        created_ids = scraper.save_scraped_jobs(jobs)
+        
+        # Optionally trigger analysis
+        if request.auto_analyze and created_ids:
+            from ..tasks.job_tasks import analyze_job_task
+            for job_id in created_ids:
+                background_tasks.add_task(analyze_job_task, job_id)
+        
+        return {
+            "success": True,
+            "total_scraped": len(jobs),
+            "saved_to_database": len(created_ids),
+            "job_ids": created_ids,
+            "message": f"Found {len(jobs)} jobs, saved {len(created_ids)} new ones"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error scraping jobs: {str(e)}"
+        )
+
+
+@router.get("/supported-sources")
+async def get_supported_sources():
+    """Get list of supported job boards"""
+    return {
+        "sources": [
+            {"id": "linkedin", "name": "LinkedIn", "status": "active"},
+            {"id": "indeed", "name": "Indeed", "status": "active"},
+            {"id": "glassdoor", "name": "Glassdoor", "status": "coming_soon"}
+        ]
+    }
+
+Phase 5: Chrome Extension (One-Click Button)
+This creates the browser extension for one-click job processing.
+Step 5.1: Extension Manifest
+Create extension/manifest.json:
+json{
+  "manifest_version": 3,
+  "name": "Job Application Assistant",
+  "version": "1.0.0",
+  "description": "One-click job analysis and application document generation",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://www.indeed.com/*",
+    "https://www.glassdoor.com/*",
+    "http://localhost:8000/*",
+    "https://your-api-domain.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/jobs/view/*",
+        "https://www.indeed.com/viewjob*",
+        "https://www.glassdoor.com/Job/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
+Step 5.2: Content Script (Extraction Logic)
+Create extension/content.js:
+javascript// Content script that runs on job posting pages
+
+class JobExtractor {
+  constructor() {
+    this.currentSite = this.detectSite();
+    this.button = null;
+  }
+
+  detectSite() {
+    const hostname = window.location.hostname;
+    if (hostname.includes('linkedin.com')) return 'linkedin';
+    if (hostname.includes('indeed.com')) return 'indeed';
+    if (hostname.includes('glassdoor.com')) return 'glassdoor';
+    return 'unknown';
+  }
+
+  // Extract job data based on site
+  extractJobData() {
+    if (this.currentSite === 'linkedin') {
+      return this.extractLinkedIn();
+    } else if (this.currentSite === 'indeed') {
+      return this.extractIndeed();
+    } else if (this.currentSite === 'glassdoor') {
+      return this.extractGlassdoor();
+    }
+    return null;
+  }
+
+  extractLinkedIn() {
+    try {
+      const jobTitle = document.querySelector('h1.top-card-layout__title')?.textContent.trim();
+      const company = document.querySelector('a.topcard__org-name-link')?.textContent.trim();
+      const location = document.querySelector('span.topcard__flavor--bullet')?.textContent.trim();
+      
+      // Get full job description
+      const descElement = document.querySelector('div.show-more-less-html__markup');
+      const jobDescription = descElement?.innerText.trim();
+      
+      // Get job URL
+      const jobUrl = window.location.href.split('?')[0];
+      
+      // Try to get salary
+      let salary = null;
+      const salaryElement = document.querySelector('span.compensation__salary');
+      if (salaryElement) {
+        salary = salaryElement.textContent.trim();
+      }
+
+      return {
+        jobTitle,
+        company,
+        location,
+        jobDescription,
+        jobUrl,
+        salary,
+        source: 'linkedin'
+      };
+    } catch (error) {
+      console.error('Error extracting LinkedIn data:', error);
+      return null;
+    }
+  }
+
+  extractIndeed() {
+    try {
+      const jobTitle = document.querySelector('h1.jobsearch-JobInfoHeader-title')?.textContent.trim();
+      const company = document.querySelector('div[data-company-name="true"]')?.textContent.trim();
+      const location = document.querySelector('div[data-testid="inlineHeader-companyLocation"]')?.textContent.trim();
+      
+      const descElement = document.querySelector('div#jobDescriptionText');
+      const jobDescription = descElement?.innerText.trim();
+      
+      const jobUrl = window.location.href.split('?')[0];
+      
+      let salary = null;
+      const salaryElement = document.querySelector('div.salary-snippet');
+      if (salaryElement) {
+        salary = salaryElement.textContent.trim();
+      }
+
+      return {
+        jobTitle,
+        company,
+        location,
+        jobDescription,
+        jobUrl,
+        salary,
+        source: 'indeed'
+      };
+    } catch (error) {
+      console.error('Error extracting Indeed data:', error);
+      return null;
+    }
+  }
+
+  extractGlassdoor() {
+    try {
+      const jobTitle = document.querySelector('div[data-test="job-title"]')?.textContent.trim();
+      const company = document.querySelector('div[data-test="employer-name"]')?.textContent.trim();
+      const location = document.querySelector('div[data-test="location"]')?.textContent.trim();
+      
+      const descElement = document.querySelector('div[data-test="job-description"]');
+      const jobDescription = descElement?.innerText.trim();
+      
+      const jobUrl = window.location.href.split('?')[0];
+      
+      let salary = null;
+      const salaryElement = document.querySelector('div[data-test="salary-estimate"]');
+      if (salaryElement) {
+        salary = salaryElement.textContent.trim();
+      }
+
+      return {
+        jobTitle,
+        company,
+        location,
+        jobDescription,
+        jobUrl,
+        salary,
+        source: 'glassdoor'
+      };
+    } catch (error) {
+      console.error('Error extracting Glassdoor data:', error);
+      return null;
+    }
+  }
+
+  // Create floating button
+  createButton() {
+    if (this.button) return;
+
+    this.button = document.createElement('button');
+    this.button.id = 'job-automation-button';
+    this.button.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M9 11l3 3L22 4"></path>
+        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+      </svg>
+      <span>Analyze Job</span>
+    `;
+    
+    this.button.addEventListener('click', () => this.handleButtonClick());
+    
+    document.body.appendChild(this.button);
+  }
+
+  async handleButtonClick() {
+    this.setButtonState('loading', 'Analyzing...');
+    
+    try {
+      // Extract job data
+      const jobData = this.extractJobData();
+      
+      if (!jobData || !jobData.jobDescription) {
+        throw new Error('Could not extract job data from page');
+      }
+
+      // Get API URL from storage
+      const { apiUrl } = await chrome.storage.sync.get(['apiUrl']);
+      const baseUrl = apiUrl || 'http://localhost:8000';
+
+      // Send to backend
+      const response = await fetch(`${baseUrl}/api/v1/jobs/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(jobData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // Show success
+      this.setButtonState('success', `Score: ${result.matchScore}%`);
+      
+      // Send notification
+      chrome.runtime.sendMessage({
+        type: 'JOB_PROCESSED',
+        data: result
+      });
+
+      // Reset button after 3 seconds
+      setTimeout(() => {
+        this.setButtonState('default', 'Analyze Job');
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error processing job:', error);
+      this.setButtonState('error', 'Error!');
+      
+      setTimeout(() => {
+        this.setButtonState('default', 'Analyze Job');
+      }, 3000);
+    }
+  }
+
+  setButtonState(state, text) {
+    this.button.className = `job-automation-btn job-automation-btn--${state}`;
+    this.button.querySelector('span').textContent = text;
+    this.button.disabled = state === 'loading';
+  }
+}
+
+// Initialize when page loads
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+function init() {
+  const extractor = new JobExtractor();
+  // Wait a bit for dynamic content to load
+  setTimeout(() => {
+    extractor.createButton();
+  }, 2000);
+}
+Step 5.3: Extension Styles
+Create extension/styles.css:
+css#job-automation-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  
+  transition: all 0.3s ease;
+}
+
+#job-automation-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+}
+
+#job-automation-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Loading state */
+.job-automation-btn--loading {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  cursor: wait;
+}
+
+.job-automation-btn--loading svg {
+  animation: spin 1s linear infinite;
+}
+
+/* Success state */
+.job-automation-btn--success {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+/* Error state */
+.job-automation-btn--error {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+Step 5.4: Background Service Worker
+Create extension/background.js:
+javascript// Background service worker for the extension
+
+// Listen for messages from content script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'JOB_PROCESSED') {
+    // Show notification
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'Job Analysis Complete',
+      message: `Match Score: ${message.data.matchScore}% - ${message.data.jobTitle}`,
+      priority: 2
+    });
+
+    // Open results in new tab (optional)
+    if (message.data.driveUrl) {
+      chrome.tabs.create({
+        url: message.data.driveUrl,
+        active: false
+      });
+    }
+  }
+});
+
+// Handle extension icon click
+chrome.action.onClicked.addListener((tab) => {
+  // Send message to content script to trigger analysis
+  chrome.tabs.sendMessage(tab.id, { action: 'TRIGGER_ANALYSIS' });
+});
+Step 5.5: Popup Interface
+Create extension/popup/popup.html:
+html<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Automation Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header>
+      <h1>🎯 Job Assistant</h1>
+      <p>Configure your job automation settings</p>
+    </header>
+
+    <main>
+      <section class="settings-section">
+        <label for="apiUrl">API URL:</label>
+        <input 
+          type="text" 
+          id="apiUrl" 
+          placeholder="http://localhost:8000"
+          value="http://localhost:8000"
+        />
+      </section>
+
+      <section class="settings-section">
+        <label for="minScore">Minimum Match Score:</label>
+        <input 
+          type="number" 
+          id="minScore" 
+          min="0" 
+          max="100" 
+          value="70"
+        />
+        <span class="helper-text">Only generate documents for jobs above this score</span>
+      </section>
+
+      <section class="settings-section">
+        <label>
+          <input type="checkbox" id="autoGenerate" checked />
+          Auto-generate documents for high scores
+        </label>
+      </section>
+
+      <button id="saveSettings" class="primary-btn">Save Settings</button>
+
+      <div id="status" class="status hidden"></div>
+    </main>
+
+    <footer>
+      <a href="#" id="viewDashboard">View Dashboard</a>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+Create extension/popup/popup.css:
+css* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 350px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f7fa;
+}
+
+.popup-container {
+  padding: 20px;
+}
+
+header {
+  margin-bottom: 20px;
+}
+
+header h1 {
+  font-size: 20px;
+  color: #1a202c;
+  margin-bottom: 4px;
+}
+
+header p {
+  font-size: 13px;
+  color: #718096;
+}
+
+.settings-section {
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.helper-text {
+  display: block;
+  font-size: 11px;
+  color: #a0aec0;
+  margin-top: 4px;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.primary-btn:hover {
+  transform: translateY(-1px);
+}
+
+.status {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.status.success {
+  background: #c6f6d5;
+  color: #22543d;
+}
+
+.status.error {
+  background: #fed7d7;
+  color: #742a2a;
+}
+
+.status.hidden {
+  display: none;
+}
+
+footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+footer a {
+  font-size: 12px;
+  color: #667eea;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+.version {
+  font-size: 11px;
+  color: #a0aec0;
+}
+Create extension/popup/popup.js:
+javascript// Popup JavaScript
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Load saved settings
+  const settings = await chrome.storage.sync.get(['apiUrl', 'minScore', 'autoGenerate']);
+  
+  document.getElementById('apiUrl').value = settings.apiUrl || 'http://localhost:8000';
+  document.getElementById('minScore').value = settings.minScore || 70;
+  document.getElementById('autoGenerate').checked = settings.autoGenerate !== false;
+
+  // Save settings button
+  document.getElementById('saveSettings').addEventListener('click', async () => {
+    const apiUrl = document.getElementById('apiUrl').value;
+    const minScore = parseInt(document.getElementById('minScore').value);
+    const autoGenerate = document.getElementById('autoGenerate').checked;
+
+    await chrome.storage.sync.set({
+      apiUrl,
+      minScore,
+      autoGenerate
+    });
+
+    showStatus('Settings saved successfully!', 'success');
+  });
+
+  // View dashboard link
+  document.getElementById('viewDashboard').addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.storage.sync.get(['apiUrl'], (settings) => {
+      const apiUrl = settings.apiUrl || 'http://localhost:8000';
+      chrome.tabs.create({ url: `${apiUrl}/dashboard` });
+    });
+  });
+});
+
+function showStatus(message, type) {
+  const status = document.getElementById('status');
+  status.textContent = message;
+  status.className = `status ${type}`;
+  
+  setTimeout(() => {
+    status.classList.add('hidden');
+  }, 3000);
+}
