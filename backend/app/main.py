@@ -6,7 +6,7 @@ from loguru import logger
 
 from .config import settings
 from .database import init_db
-from .api import jobs, analysis, documents, scraping, stats, ats, analytics, followup, research, recommendations, skills, cache
+from .api import jobs, analysis, documents, scraping, stats, ats, analytics, followup, research, recommendations, skills, cache, websocket
 
 
 # Configure logging
@@ -16,13 +16,27 @@ logging.basicConfig(level=settings.LOG_LEVEL)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
+    import asyncio
+    from .services.websocket_service import websocket_ping_task
+
     # Startup
     logger.info("🚀 Starting Job Automation System...")
     init_db()
     logger.info("✅ Database initialized")
+
+    # Start WebSocket ping task
+    ping_task = asyncio.create_task(websocket_ping_task())
+    logger.info("✅ WebSocket ping task started")
+
     yield
+
     # Shutdown
     logger.info("👋 Shutting down...")
+    ping_task.cancel()
+    try:
+        await ping_task
+    except asyncio.CancelledError:
+        pass
 
 
 # Create FastAPI app
@@ -71,6 +85,7 @@ app.include_router(research.router, prefix="/api/v1/research", tags=["company-re
 app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills-gap-analysis"])
 app.include_router(cache.router, prefix="/api/v1/cache", tags=["cache"])
+app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
 
 
 if __name__ == "__main__":
