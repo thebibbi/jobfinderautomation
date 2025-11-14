@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - job-automation
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./skills:/app/skills
+      - ./resume_templates:/app/resume_templates
+      - ./credentials:/app/credentials
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - job-automation
+
+  celery_worker:
+    build: ./backend
+    volumes:
+      - ./backend:/app
+      - ./skills:/app/skills
+      - ./resume_templates:/app/resume_templates
+      - ./credentials:/app/credentials
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    networks:
+      - job-automation
+
+volumes:
+  redis_data:
+
+networks:
+  job-automation:
+    driver: bridge
