@@ -7,7 +7,7 @@ from io import BytesIO
 from pathlib import Path
 import json
 
-from .claude_service import get_claude_service
+from .ai_service import get_ai_service
 from ..prompts.cover_letter import COVER_LETTER_PROMPT
 
 
@@ -15,7 +15,7 @@ class DocumentGenerator:
     """Generates tailored resumes and cover letters"""
 
     def __init__(self):
-        self.claude = get_claude_service()
+        self.ai_service = get_ai_service()
 
     async def generate_resume(
         self,
@@ -110,55 +110,22 @@ class DocumentGenerator:
         style: str = "conversational"
     ) -> str:
         """
-        Generate tailored cover letter
+        Generate tailored cover letter using AI service
 
         Args:
             job_data: Job information
-            analysis_results: Analysis from Claude
+            analysis_results: Analysis results
             style: "conversational" or "formal"
         """
         logger.info(f"📝 Generating {style} cover letter for: {job_data['company']}")
 
         try:
-            # Load voice profile
-            voice_profile_path = Path(__file__).parent.parent.parent.parent / "skills" / "voice_profile.md"
-            with open(voice_profile_path, 'r') as f:
-                voice_profile = f.read()
-
-            # Get cover letter guidance from analysis
-            guidance = analysis_results.get("cover_letter_guidance", {})
-
-            # Build comprehensive prompt
-            full_prompt = f"""
-{voice_profile}
-
-<job_details>
-<company>{job_data['company']}</company>
-<job_title>{job_data['job_title']}</job_title>
-<job_description>
-{job_data['job_description']}
-</job_description>
-</job_details>
-
-<analysis_guidance>
-{json.dumps(guidance, indent=2)}
-</analysis_guidance>
-
-<style>{style}</style>
-
-{COVER_LETTER_PROMPT}
-"""
-
-            response = self.claude.client.messages.create(
-                model=self.claude.model,
-                max_tokens=self.claude.max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": full_prompt
-                }]
+            # Use unified AI service (automatically routes to configured provider/model)
+            cover_letter = await self.ai_service.generate_cover_letter(
+                job_data=job_data,
+                analysis_results=analysis_results,
+                style=style
             )
-
-            cover_letter = response.content[0].text
 
             logger.info(f"✅ {style.title()} cover letter generated")
             return cover_letter
