@@ -19,7 +19,9 @@
     "recharts": "^2.10.3",
     "lucide-react": "^0.303.0",
     "clsx": "^2.0.0",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.2.0",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
