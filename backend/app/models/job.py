@@ -43,6 +43,10 @@ class Job(Base):
 
     # Relationships
     documents = relationship("Document", back_populates="job")
+    events = relationship("ApplicationEvent", back_populates="job", cascade="all, delete-orphan")
+    interviews = relationship("Interview", back_populates="job", cascade="all, delete-orphan")
+    offers = relationship("Offer", back_populates="job", cascade="all, delete-orphan")
+    notes = relationship("ApplicationNote", back_populates="job", cascade="all, delete-orphan")
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

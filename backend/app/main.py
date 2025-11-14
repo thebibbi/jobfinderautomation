@@ -6,7 +6,7 @@ from loguru import logger
 
 from .config import settings
 from .database import init_db
-from .api import jobs, analysis, documents, scraping, stats
+from .api import jobs, analysis, documents, scraping, stats, ats
 
 
 # Configure logging
@@ -64,6 +64,7 @@ app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"]
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(scraping.router, prefix="/api/v1/scraping", tags=["scraping"])
 app.include_router(stats.router, prefix="/api/v1/stats", tags=["statistics"])
+app.include_router(ats.router, prefix="/api/v1/ats", tags=["application-tracking"])
 
 
 if __name__ == "__main__":
