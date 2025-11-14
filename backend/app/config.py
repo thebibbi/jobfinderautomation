@@ -21,10 +21,29 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str
 
+    # AI Provider Configuration
+    AI_PROVIDER: str = "anthropic"  # anthropic, openrouter, openai
+
     # Anthropic Claude
-    ANTHROPIC_API_KEY: str
+    ANTHROPIC_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
     MAX_TOKENS: int = 8000
+
+    # OpenRouter
+    OPENROUTER_API_KEY: str = ""
+    ANALYSIS_MODEL: str = "anthropic/claude-3.5-sonnet"
+    PRESCREENING_MODEL: str = "meta-llama/llama-3.1-8b-instruct"
+    COVER_LETTER_MODEL: str = "anthropic/claude-3.5-sonnet"
+    RESUME_MODEL: str = "openai/gpt-4-turbo"
+    FALLBACK_MODEL: str = "google/gemini-pro-1.5"
+
+    # Ensemble & Cost Optimization
+    ENABLE_ENSEMBLE: bool = False
+    ENSEMBLE_MODELS: str = ""
+    MAX_COST_PER_JOB: float = 0.50
+    USE_CHEAP_PRESCREENING: bool = True
+    CHEAP_MODEL_THRESHOLD: int = 60
+    ENABLE_COST_TRACKING: bool = True
 
     # Google Cloud
     GOOGLE_CREDENTIALS_PATH: str
@@ -57,6 +76,12 @@ class Settings(BaseSettings):
     @property
     def locations_list(self) -> List[str]:
         return [loc.strip() for loc in self.DEFAULT_LOCATION.split(",")]
+
+    @property
+    def ensemble_models_list(self) -> List[str]:
+        if not self.ENSEMBLE_MODELS:
+            return []
+        return [model.strip() for model in self.ENSEMBLE_MODELS.split(",")]
 
 
 @lru_cache()

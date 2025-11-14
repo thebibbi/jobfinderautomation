@@ -2,7 +2,7 @@ from typing import Dict, Any
 from loguru import logger
 from datetime import datetime
 
-from .claude_service import get_claude_service
+from .ai_service import get_ai_service
 from ..models.job import Job
 from ..database import SessionLocal
 
@@ -11,7 +11,7 @@ class JobAnalyzer:
     """Service for analyzing job postings"""
 
     def __init__(self):
-        self.claude = get_claude_service()
+        self.ai_service = get_ai_service()
 
     async def analyze_job(self, job_id: int) -> Dict[str, Any]:
         """
@@ -32,8 +32,9 @@ class JobAnalyzer:
 
             logger.info(f"🔍 Analyzing job: {job.company} - {job.job_title}")
 
-            # Perform analysis using Claude
-            analysis_result = await self.claude.analyze_job_fit(
+            # Perform analysis using unified AI service
+            # This will automatically use the configured provider and strategy
+            analysis_result = await self.ai_service.analyze_job_fit(
                 job_description=job.job_description,
                 company=job.company,
                 job_title=job.job_title
