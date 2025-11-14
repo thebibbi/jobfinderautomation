@@ -111,6 +111,9 @@ class Interview(Base):
     performance_rating = Column(Integer, nullable=True)  # 1-5 scale
     notes = Column(Text, nullable=True)
 
+    # Calendar integration
+    calendar_event_id = Column(String, nullable=True)  # Google Calendar event ID
+
     # Reminders
     reminder_sent = Column(Boolean, default=False)
     reminder_sent_at = Column(DateTime, nullable=True)
