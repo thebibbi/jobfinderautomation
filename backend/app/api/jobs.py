@@ -7,6 +7,7 @@ from loguru import logger
 from ..database import get_db
 from ..models.job import Job
 from ..schemas.job import JobCreate, JobResponse, JobUpdate, JobList, JobFromExtension, JobProcessResponse
+from ..services.integration_service import integrate_job_created
 
 router = APIRouter()
 
@@ -30,6 +31,9 @@ async def create_job(
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    # Trigger integrations (company research, skills gap, etc.)
+    await integrate_job_created(db, job.id, auto_process=True)
 
     return job
 
