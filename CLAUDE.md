@@ -18,8 +18,9 @@
 8. [Testing Guidelines](#testing-guidelines)
 9. [Configuration Management](#configuration-management)
 10. [Key Integration Points](#key-integration-points)
-11. [Common Tasks](#common-tasks)
-12. [Best Practices for AI Assistants](#best-practices-for-ai-assistants)
+11. [Frontend Design Guidelines](#frontend-design-guidelines)
+12. [Common Tasks](#common-tasks)
+13. [Best Practices for AI Assistants](#best-practices-for-ai-assistants)
 
 ---
 
@@ -1093,6 +1094,697 @@ task_result = process_job_analysis.AsyncResult(task.id)
 if task_result.ready():
     result = task_result.result
 ```
+
+---
+
+## Frontend Design Guidelines
+
+**CRITICAL**: This project uses a **RPG/Fantasy aesthetic** with distinctive, high-quality design choices. Avoid generic "AI slop" aesthetics at all costs.
+
+### Design Philosophy
+
+This job automation platform is themed as an **epic quest for career advancement**. Every frontend element should evoke:
+- Fantasy-inspired adventure and achievement
+- Medieval RPG aesthetics with modern functionality
+- Character progression (skills, experience, achievements)
+- Quest-based workflow (job applications as quests)
+- Epic atmosphere with dramatic presentation
+
+### Typography Rules
+
+#### ❌ NEVER Use These Fonts
+These fonts create generic, uninspired interfaces:
+- Inter
+- Roboto
+- Open Sans
+- Lato
+- Arial
+- Helvetica
+- Default system fonts (-apple-system, BlinkMacSystemFont, etc.)
+
+#### ✅ ALWAYS Use Distinctive Fonts
+
+Choose fonts that create immediate visual impact and match the RPG theme:
+
+**Primary Recommendations (RPG/Fantasy Aesthetic)**:
+```css
+/* Display/Headers - Epic, dramatic titles */
+font-family: 'Cinzel', serif;           /* Medieval, regal titles */
+font-family: 'Playfair Display', serif; /* Editorial elegance */
+font-family: 'Crimson Pro', serif;      /* Classic readability */
+font-family: 'Newsreader', serif;       /* Modern editorial */
+
+/* Body Text - Technical precision */
+font-family: 'IBM Plex Serif', serif;   /* Technical + readable */
+font-family: 'Source Sans 3', sans-serif; /* Clean technical */
+font-family: 'DM Sans', sans-serif;     /* Geometric precision */
+
+/* Code/Data - Monospace excellence */
+font-family: 'JetBrains Mono', monospace; /* Developer favorite */
+font-family: 'Fira Code', monospace;      /* Ligature support */
+font-family: 'Space Mono', monospace;     /* Distinctive spacing */
+
+/* Accent/Special - Unique character */
+font-family: 'Bricolage Grotesque', sans-serif; /* Playful weight variation */
+font-family: 'Fraunces', serif;                 /* Variable font magic */
+```
+
+#### Font Pairing Strategy
+
+**High contrast is essential**. Pair fonts from different categories:
+
+```css
+/* Example 1: Epic Quest Theme */
+--font-display: 'Cinzel', serif;        /* Quest titles, headers */
+--font-body: 'IBM Plex Sans', sans-serif; /* Content, descriptions */
+--font-mono: 'JetBrains Mono', monospace; /* Job URLs, IDs, stats */
+
+/* Example 2: Technical Wizard Theme */
+--font-display: 'Bricolage Grotesque', sans-serif; /* Headers */
+--font-body: 'Source Sans 3', sans-serif;    /* Body text */
+--font-mono: 'Fira Code', monospace;         /* Code blocks */
+
+/* Example 3: Scholarly Sage Theme */
+--font-display: 'Playfair Display', serif;   /* Elegant headers */
+--font-body: 'DM Sans', sans-serif;          /* Modern body */
+--font-mono: 'Space Mono', monospace;        /* Data display */
+```
+
+#### Weight & Size Extremes
+
+**Use dramatic contrast** - avoid middle-ground weights:
+
+```css
+/* Headers - Use extremes */
+h1 { font-weight: 900; font-size: 4rem; }    /* Epic */
+h2 { font-weight: 800; font-size: 3rem; }    /* Bold */
+
+/* Body - Light or heavy, not medium */
+.body-light { font-weight: 200; }            /* Delicate */
+.body-heavy { font-weight: 700; }            /* Strong */
+
+/* Avoid these boring middle weights */
+/* ❌ font-weight: 400, 500, 600 */
+
+/* Size jumps should be 3x+, not 1.5x */
+--text-xs: 0.75rem;   /* 12px */
+--text-base: 1rem;    /* 16px */
+--text-xl: 3rem;      /* 48px - 3x jump */
+--text-hero: 6rem;    /* 96px - 6x jump */
+```
+
+#### Loading Fonts
+
+**Always load from Google Fonts**:
+
+```html
+<!-- In HTML <head> -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=IBM+Plex+Sans:wght@200;400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+```
+
+```css
+/* In CSS - Define as custom properties */
+:root {
+  --font-display: 'Cinzel', serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Use decisively throughout */
+h1, h2, h3 { font-family: var(--font-display); }
+body, p, div { font-family: var(--font-body); }
+code, pre, .data { font-family: var(--font-mono); }
+```
+
+### Color & Theme: RPG Aesthetic
+
+#### Fantasy-Inspired Color Palettes
+
+**Avoid**: Boring corporate blues, generic purple gradients, flat whites
+
+**Use**: Rich, dramatic tones inspired by fantasy settings
+
+```css
+/* Theme 1: Dark Quest (Primary Recommendation) */
+:root {
+  /* Deep, rich backgrounds */
+  --bg-primary: #1a0f0a;        /* Deep brown-black */
+  --bg-secondary: #2d1810;      /* Rich leather */
+  --bg-accent: #3d2418;         /* Aged wood */
+
+  /* Metallic accents - Gold/Bronze */
+  --accent-primary: #d4af37;    /* Royal gold */
+  --accent-secondary: #cd7f32;  /* Weathered bronze */
+  --accent-tertiary: #8b4513;   /* Burnished copper */
+
+  /* Text colors */
+  --text-primary: #f5e6d3;      /* Aged parchment */
+  --text-secondary: #c9b896;    /* Faded ink */
+  --text-muted: #8b7d6b;        /* Old script */
+
+  /* Status colors - Fantasy themed */
+  --status-success: #4ade80;    /* Quest complete (emerald) */
+  --status-warning: #fbbf24;    /* Caution (amber) */
+  --status-danger: #ef4444;     /* Critical (ruby) */
+  --status-info: #60a5fa;       /* Knowledge (sapphire) */
+}
+
+/* Theme 2: Arcane Library */
+:root {
+  --bg-primary: #0f1419;        /* Deep midnight */
+  --bg-secondary: #1a1f2e;      /* Shadowed stone */
+  --bg-accent: #2a2f3e;         /* Dark marble */
+
+  --accent-primary: #9333ea;    /* Arcane purple */
+  --accent-secondary: #3b82f6;  /* Mystical blue */
+  --accent-tertiary: #06b6d4;   /* Crystal cyan */
+
+  --text-primary: #e4e7eb;      /* Bright script */
+  --text-secondary: #9ca3af;    /* Faded runes */
+}
+
+/* Theme 3: Dragonfire */
+:root {
+  --bg-primary: #1c0f0a;        /* Charred earth */
+  --bg-secondary: #2d1410;      /* Burnt wood */
+
+  --accent-primary: #dc2626;    /* Dragon red */
+  --accent-secondary: #ea580c;  /* Flame orange */
+  --accent-tertiary: #facc15;   /* Molten gold */
+
+  --text-primary: #fef2f2;      /* Ash white */
+}
+```
+
+#### Applying Colors with Depth
+
+```css
+/* Background layers - create depth */
+.page-background {
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, transparent 100%),
+    linear-gradient(45deg, #1a0f0a 0%, #2d1810 100%);
+}
+
+/* Card/Panel - Ornate borders */
+.quest-card {
+  background: linear-gradient(145deg, #2d1810, #1a0f0a);
+  border: 2px solid var(--accent-secondary);
+  box-shadow:
+    0 0 20px rgba(212, 175, 55, 0.3),
+    inset 0 1px 0 rgba(212, 175, 55, 0.2);
+}
+
+/* Button - Metallic effect */
+.btn-primary {
+  background: linear-gradient(145deg, #d4af37, #cd7f32);
+  border: 1px solid #8b4513;
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+```
+
+### Motion & Animation
+
+**Use animations for epic moments and micro-interactions**
+
+#### Page Load - Staggered Reveals
+
+```css
+/* Epic entrance animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stagger elements for orchestrated reveal */
+.hero-title {
+  animation: fadeInUp 0.8s ease-out;
+  animation-delay: 0.2s;
+  animation-fill-mode: backwards;
+}
+
+.quest-list-item:nth-child(1) { animation-delay: 0.1s; }
+.quest-list-item:nth-child(2) { animation-delay: 0.2s; }
+.quest-list-item:nth-child(3) { animation-delay: 0.3s; }
+```
+
+#### Hover States - Magical Effects
+
+```css
+.quest-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.quest-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 20px 40px rgba(212, 175, 55, 0.4),
+    0 0 60px rgba(212, 175, 55, 0.2);
+}
+
+/* Glow effect on interactive elements */
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(212, 175, 55, 0.6); }
+}
+
+.active-quest {
+  animation: glow 2s infinite;
+}
+```
+
+#### Status Transitions
+
+```css
+/* Progress bar - filling animation */
+@keyframes fillProgress {
+  from { width: 0%; }
+  to { width: var(--progress-value); }
+}
+
+.progress-bar {
+  animation: fillProgress 1.5s ease-out;
+}
+
+/* Score reveal - counting up effect */
+@keyframes scoreReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.5) rotate(-10deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.match-score {
+  animation: scoreReveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+```
+
+### Backgrounds: Texture & Atmosphere
+
+**Never use plain solid colors** - create depth and atmosphere
+
+```css
+/* Parchment texture background */
+.parchment-bg {
+  background:
+    url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E"),
+    linear-gradient(145deg, #f5e6d3, #e8d4b8);
+}
+
+/* Leather-bound panel */
+.leather-panel {
+  background:
+    radial-gradient(ellipse at top left, rgba(61, 36, 24, 0.8), transparent),
+    radial-gradient(ellipse at bottom right, rgba(45, 24, 16, 0.6), transparent),
+    linear-gradient(135deg, #2d1810 0%, #1a0f0a 100%);
+  background-blend-mode: overlay;
+}
+
+/* Ornate border pattern */
+.decorative-border {
+  border-image: repeating-linear-gradient(
+    45deg,
+    #d4af37,
+    #d4af37 10px,
+    #cd7f32 10px,
+    #cd7f32 20px
+  ) 1;
+}
+
+/* Geometric pattern overlay */
+.pattern-overlay {
+  background-image:
+    repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(212, 175, 55, 0.03) 35px, rgba(212, 175, 55, 0.03) 70px),
+    repeating-linear-gradient(-45deg, transparent, transparent 35px, rgba(212, 175, 55, 0.03) 35px, rgba(212, 175, 55, 0.03) 70px);
+}
+```
+
+### UI Component Guidelines
+
+#### Job Cards as Quest Cards
+
+```css
+.job-quest-card {
+  background: linear-gradient(145deg, #2d1810, #1a0f0a);
+  border: 2px solid var(--accent-secondary);
+  border-radius: 8px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Corner ornaments */
+.job-quest-card::before {
+  content: '⚔️';
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 24px;
+  opacity: 0.3;
+}
+
+/* Match score as level indicator */
+.match-score {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, #d4af37, #cd7f32);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+```
+
+#### Buttons as Action Items
+
+```css
+.quest-button {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  padding: 16px 32px;
+  background: linear-gradient(145deg, #d4af37, #cd7f32);
+  border: 2px solid #8b4513;
+  color: #1a0f0a;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.quest-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.quest-button:hover::before {
+  left: 100%;
+}
+```
+
+#### Skills Display as Character Stats
+
+```css
+.skill-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.skill-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.skill-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--accent-secondary);
+  position: relative;
+  overflow: hidden;
+}
+
+.skill-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+  animation: fillSkill 1s ease-out;
+}
+```
+
+### Chrome Extension Styling
+
+The extension popup should feel like a **quest log interface**:
+
+```css
+/* Popup container */
+.extension-popup {
+  width: 380px;
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, transparent 100%),
+    #1a0f0a;
+  border: 3px solid #d4af37;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+}
+
+/* Header - Quest title style */
+.popup-header {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-align: center;
+  padding: 20px;
+  background: linear-gradient(145deg, #d4af37, #cd7f32);
+  color: #1a0f0a;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-bottom: 2px solid #8b4513;
+}
+
+/* Analyze button - Primary action */
+.analyze-job-btn {
+  width: 100%;
+  padding: 16px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  background: linear-gradient(145deg, #4ade80, #22c55e);
+  border: 2px solid #16a34a;
+  color: #0f1419;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+```
+
+### Avoiding "AI Slop" Aesthetics
+
+#### ❌ NEVER Do This
+
+```css
+/* Generic purple gradient on white */
+.bad-design {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: 'Inter', sans-serif;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+/* Cookie-cutter card design */
+.boring-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  font-family: 'Roboto', sans-serif;
+}
+```
+
+#### ✅ ALWAYS Do This
+
+```css
+/* Contextual, thematic design */
+.epic-design {
+  background: linear-gradient(145deg, #2d1810, #1a0f0a);
+  font-family: 'Cinzel', serif;
+  border: 2px solid #d4af37;
+  box-shadow:
+    0 0 20px rgba(212, 175, 55, 0.3),
+    inset 0 1px 0 rgba(212, 175, 55, 0.2);
+}
+
+/* Distinctive, memorable card */
+.quest-card {
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, transparent 100%),
+    #2d1810;
+  border-left: 4px solid #d4af37;
+  border-right: 4px solid #cd7f32;
+  font-family: 'IBM Plex Sans', sans-serif;
+  position: relative;
+}
+```
+
+### Implementation Checklist
+
+When creating or updating any frontend component:
+
+- [ ] **Fonts**: Used distinctive, non-generic fonts from approved list
+- [ ] **Font Pairing**: High contrast pairing (display + body + mono)
+- [ ] **Font Weights**: Using extremes (100-200 or 800-900), not middle weights
+- [ ] **Size Contrast**: 3x+ jumps, not 1.5x
+- [ ] **Color Theme**: RPG-inspired palette (dark quest, arcane, dragonfire)
+- [ ] **CSS Variables**: All colors and fonts defined as custom properties
+- [ ] **Backgrounds**: Layered, textured, atmospheric (not solid colors)
+- [ ] **Animations**: Epic page load with staggered reveals
+- [ ] **Hover States**: Magical effects with smooth transitions
+- [ ] **Ornamental Details**: Borders, corners, decorative elements
+- [ ] **Thematic Consistency**: Every element reinforces RPG/quest aesthetic
+- [ ] **Google Fonts**: Loaded via CDN with proper weights
+- [ ] **Avoid Generic**: No Inter, Roboto, purple gradients, flat whites
+
+### Example: Complete Job Analysis Page
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quest Analysis - Job Automation</title>
+
+  <!-- Load distinctive fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=IBM+Plex+Sans:wght@200;400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      /* Fonts */
+      --font-display: 'Cinzel', serif;
+      --font-body: 'IBM Plex Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      /* Dark Quest Theme */
+      --bg-primary: #1a0f0a;
+      --bg-secondary: #2d1810;
+      --accent-gold: #d4af37;
+      --accent-bronze: #cd7f32;
+      --text-primary: #f5e6d3;
+      --text-secondary: #c9b896;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background:
+        linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, transparent 100%),
+        linear-gradient(45deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: 4rem;
+      font-weight: 900;
+      text-align: center;
+      margin-bottom: 60px;
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-bronze));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+      animation: fadeInUp 0.8s ease-out;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .quest-card {
+      max-width: 800px;
+      margin: 0 auto 30px;
+      background: linear-gradient(145deg, var(--bg-secondary), var(--bg-primary));
+      border: 2px solid var(--accent-bronze);
+      border-radius: 8px;
+      padding: 32px;
+      box-shadow:
+        0 0 20px rgba(212, 175, 55, 0.3),
+        inset 0 1px 0 rgba(212, 175, 55, 0.2);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .quest-card:hover {
+      transform: translateY(-4px);
+      box-shadow:
+        0 20px 40px rgba(212, 175, 55, 0.4),
+        0 0 60px rgba(212, 175, 55, 0.2);
+    }
+
+    .match-score {
+      font-family: var(--font-display);
+      font-size: 5rem;
+      font-weight: 900;
+      text-align: center;
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-bronze));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin: 20px 0;
+      animation: scoreReveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes scoreReveal {
+      from {
+        opacity: 0;
+        transform: scale(0.5) rotate(-10deg);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 class="hero-title">Quest Analysis</h1>
+
+  <div class="quest-card">
+    <h2>Senior Software Engineer</h2>
+    <div class="match-score">87</div>
+    <p>Your quest match has been calculated...</p>
+  </div>
+</body>
+</html>
+```
+
+### Key Takeaways
+
+1. **Typography is instant quality signaling** - Never use boring fonts
+2. **RPG theme is mandatory** - Every design choice should reinforce this
+3. **High contrast creates impact** - Extremes in weight, size, color
+4. **Backgrounds need depth** - Layer gradients, patterns, textures
+5. **Animation tells stories** - Orchestrated reveals, epic transitions
+6. **Avoid AI slop** - No generic patterns, predictable layouts, or overused fonts
+7. **Context-specific character** - This is a quest system, not a corporate dashboard
 
 ---
 
