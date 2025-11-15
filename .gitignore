@@ -62,3 +62,4 @@ out/
 
 # MCP Config (should be in user home directory)
 mcp_config.json
+RECONCILIATION_SUMMARY.md
