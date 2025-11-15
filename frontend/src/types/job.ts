@@ -11,11 +11,16 @@ export interface Job {
   salary_max?: number;
   source: string;
   status: string;
+  job_type?: string;
   match_score?: number;
-  recommendation?: 'apply_now' | 'apply_with_confidence' | 'consider_carefully' | 'not_recommended';
+  recommendation?: 'apply_now' | 'apply_with_confidence' | 'consider_carefully' | 'not_recommended' | 'skip';
   created_at: string;
   updated_at: string;
+  application_deadline?: string;
   notes?: string;
+  strengths?: string[];
+  concerns?: string[];
+  missing_skills?: string[];
 }
 
 export interface JobCreate {

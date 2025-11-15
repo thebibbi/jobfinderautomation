@@ -40,6 +40,9 @@ export const jobsApi = {
   update: (id: number, data: any) => apiClient.patch(`/jobs/${id}`, data),
   delete: (id: number) => apiClient.delete(`/jobs/${id}`),
   process: (data: any) => apiClient.post('/jobs/process', data),
+  analyze: (id: number) => apiClient.post(`/analysis/jobs/${id}/analyze`),
+  generateDocuments: (id: number) => apiClient.post(`/documents/jobs/${id}/generate`),
+  getDocuments: (id: number) => apiClient.get(`/documents/jobs/${id}`),
 };
 
 export const applicationsApi = {
@@ -79,6 +82,21 @@ export const analyticsApi = {
 export const cacheApi = {
   stats: () => apiClient.get('/cache/stats'),
   clear: (namespace: string) => apiClient.delete(`/cache/${namespace}`),
+};
+
+export const scrapingApi = {
+  trigger: (data: any) => apiClient.post('/scraping/trigger', data),
+  status: (taskId: string) => apiClient.get(`/scraping/status/${taskId}`),
+};
+
+export const skillsApi = {
+  analyze: () => apiClient.get('/skills/analyze'),
+  getGaps: () => apiClient.get('/skills/gaps'),
+};
+
+export const researchApi = {
+  company: (companyName: string) => apiClient.get(`/research/company/${companyName}`),
+  forJob: (jobId: number) => apiClient.get(`/research/jobs/${jobId}`),
 };
 
 export default apiClient;

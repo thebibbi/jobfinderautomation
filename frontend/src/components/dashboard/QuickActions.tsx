@@ -1,12 +1,33 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/common/Card';
 import Button from '@/components/common/Button';
+import AddJobModal from '@/components/jobs/AddJobModal';
+import { useCreateJob } from '@/hooks/useJobs';
+import { useToast } from '@/components/common/Toast';
 
 export default function QuickActions() {
   const router = useRouter();
+  const createJob = useCreateJob();
+  const { showToast } = useToast();
+  const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
+
+  const handleAddJob = async (data: any) => {
+    try {
+      const response = await createJob.mutateAsync(data);
+      showToast('success', 'Job added successfully');
+      setIsAddJobModalOpen(false);
+      // Navigate to the new job
+      if (response.data?.id) {
+        router.push(`/jobs/${response.data.id}`);
+      }
+    } catch (error) {
+      showToast('error', 'Failed to add job');
+      throw error;
+    }
+  };
 
   const actions = [
     {
@@ -17,7 +38,7 @@ export default function QuickActions() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
       ),
-      onClick: () => router.push('/jobs?action=create'),
+      onClick: () => setIsAddJobModalOpen(true),
       color: 'bg-blue-500 hover:bg-blue-600',
     },
     {
@@ -56,31 +77,40 @@ export default function QuickActions() {
   ];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {actions.map((action, index) => (
-            <button
-              key={index}
-              onClick={action.onClick}
-              className={`${action.color} text-white rounded-lg p-4 transition-all hover:shadow-lg text-left`}
-            >
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  {action.icon}
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {actions.map((action, index) => (
+              <button
+                key={index}
+                onClick={action.onClick}
+                className={`${action.color} text-white rounded-lg p-4 transition-all hover:shadow-lg text-left`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    {action.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">{action.title}</h3>
+                    <p className="text-xs mt-1 opacity-90">{action.description}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-sm">{action.title}</h3>
-                  <p className="text-xs mt-1 opacity-90">{action.description}</p>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Add Job Modal */}
+      <AddJobModal
+        isOpen={isAddJobModalOpen}
+        onClose={() => setIsAddJobModalOpen(false)}
+        onAdd={handleAddJob}
+      />
+    </>
   );
 }
