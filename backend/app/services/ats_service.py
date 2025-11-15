@@ -259,7 +259,7 @@ class ATSService:
             job_id=interview_data.job_id,
             event_type="interview_scheduled",
             description=f"{interview_data.interview_type.value} interview scheduled for {interview_data.scheduled_date}",
-            metadata={
+            event_data={
                 "interview_type": interview_data.interview_type.value,
                 "scheduled_date": interview_data.scheduled_date.isoformat(),
                 "is_virtual": interview_data.is_virtual
@@ -309,7 +309,7 @@ class ATSService:
                 job_id=interview.job_id,
                 event_type="interview_completed",
                 description=f"Interview completed with outcome: {interview_data.outcome.value}",
-                metadata={
+                event_data={
                     "interview_type": interview.interview_type.value,
                     "outcome": interview_data.outcome.value,
                     "performance_rating": interview_data.performance_rating
@@ -377,7 +377,7 @@ class ATSService:
             job_id=offer_data.job_id,
             event_type="offer_received",
             description=f"Job offer received: ${offer_data.salary:,.0f} {offer_data.salary_period}",
-            metadata={
+            event_data={
                 "salary": offer_data.salary,
                 "currency": offer_data.currency,
                 "bonus": offer_data.bonus,
@@ -434,7 +434,7 @@ class ATSService:
                 job_id=offer.job_id,
                 event_type="offer_decision",
                 description=f"Offer {offer_data.status.value}",
-                metadata={"decision": offer_data.status.value}
+                event_data={"decision": offer_data.status.value}
             )
             self.db.add(event)
 
@@ -486,7 +486,7 @@ class ATSService:
             job_id=offer.job_id,
             event_type="offer_negotiation",
             description=f"Counter-offer submitted: ${negotiation_data.counter_salary:,.0f}",
-            metadata=counter_offer
+            event_data=counter_offer
         )
         self.db.add(event)
 
@@ -524,7 +524,7 @@ class ATSService:
                 job_id=note_data.job_id,
                 event_type="communication",
                 description=f"{note_data.communication_direction} {note_data.communication_method} with {note_data.contact_person}",
-                metadata={
+                event_data={
                     "note_type": note_data.note_type,
                     "communication_method": note_data.communication_method
                 }

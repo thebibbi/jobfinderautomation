@@ -78,7 +78,7 @@ class ApplicationEventBase(BaseModel):
     """Base application event"""
     event_type: str
     description: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    event_data: Optional[Dict[str, Any]] = None
 
 
 class ApplicationEventCreate(ApplicationEventBase):

@@ -1,4 +1,9 @@
-from sentence_transformers import SentenceTransformer, util
+try:
+    from sentence_transformers import SentenceTransformer, util
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    print("Warning: sentence_transformers not available - semantic matching disabled")
 import numpy as np
 from typing import List, Dict, Any, Tuple
 from loguru import logger
@@ -14,6 +19,11 @@ class SemanticMatcher:
     """
 
     def __init__(self):
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            logger.warning("⚠️ Semantic matching disabled - sentence_transformers not available")
+            self.model = None
+            return
+            
         # Use a model optimized for semantic search
         self.model_name = 'all-MiniLM-L6-v2'  # Fast and effective
         logger.info(f"🤖 Loading semantic model: {self.model_name}")
@@ -78,6 +88,9 @@ class SemanticMatcher:
 
     def get_candidate_embedding(self) -> np.ndarray:
         """Get or create candidate profile embedding"""
+        if not SENTENCE_TRANSFORMERS_AVAILABLE or self.model is None:
+            return np.array([0.0])  # Return dummy embedding
+            
         if self._candidate_embedding is None:
             profile = self._build_candidate_profile()
             logger.info("🔄 Creating candidate profile embedding...")
@@ -103,6 +116,11 @@ class SemanticMatcher:
         Returns:
             Similarity score (0-100)
         """
+        if not SENTENCE_TRANSFORMERS_AVAILABLE or self.model is None:
+            # Return neutral score when semantic matching unavailable
+            logger.warning("⚠️ Using default similarity score - semantic matching disabled")
+            return 50.0
+            
         try:
             # Build job text
             job_text = f"JOB TITLE: {job_title}\n"

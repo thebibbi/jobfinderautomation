@@ -5,7 +5,7 @@ Endpoints for cache statistics, management, and monitoring.
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Any, Optional, List
 from loguru import logger
 
 from ..services.cache_service import get_cache, CacheNamespace, CacheTTL
@@ -33,7 +33,7 @@ class CacheSetRequest(BaseModel):
     """Request to set cache value"""
     namespace: str
     key: str
-    value: any
+    value: Any
     ttl_seconds: Optional[int] = 3600
 
 

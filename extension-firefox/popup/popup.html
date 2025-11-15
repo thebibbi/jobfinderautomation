@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Application Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <h1 class="title">
+          <svg class="logo" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"></path>
+          </svg>
+          Job Assistant
+        </h1>
+        <div class="connection-status" id="connectionStatus">
+          <div class="status-indicator" id="statusIndicator"></div>
+          <span id="statusText">Connecting...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="applications">Applications</button>
+      <button class="tab" data-tab="recommendations">Recommendations</button>
+      <button class="tab" data-tab="interviews">Interviews</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Tab Content -->
+    <main class="content">
+      <!-- Overview Tab -->
+      <div class="tab-content active" id="overview-tab">
+        <section class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-info">
+              <div class="stat-value" id="totalJobs">-</div>
+              <div class="stat-label">Total Jobs</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-info">
+              <div class="stat-value" id="totalApplications">-</div>
+              <div class="stat-label">Applications</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">📅</div>
+            <div class="stat-info">
+              <div class="stat-value" id="totalInterviews">-</div>
+              <div class="stat-label">Interviews</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">🎯</div>
+            <div class="stat-info">
+              <div class="stat-value" id="avgMatchScore">-</div>
+              <div class="stat-label">Avg Match</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quick Actions -->
+        <section class="section">
+          <h2 class="section-title">Quick Actions</h2>
+          <div class="action-buttons">
+            <button class="action-btn" id="viewDashboard">
+              <svg width="16" height="16" fill="none" stroke="currentColor">
+                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path>
+              </svg>
+              Open Dashboard
+            </button>
+            <button class="action-btn" id="refreshStats">
+              <svg width="16" height="16" fill="none" stroke="currentColor">
+                <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 014.51 15"></path>
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </section>
+
+        <!-- Recent Activity -->
+        <section class="section">
+          <h2 class="section-title">Recent Activity</h2>
+          <div class="activity-list" id="recentActivity">
+            <div class="empty-state">
+              <svg width="48" height="48" fill="none" stroke="currentColor">
+                <circle cx="24" cy="24" r="22"></circle>
+                <path d="M12 12l12 12M24 12l-12 12"></path>
+              </svg>
+              <p>No recent activity</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Applications Tab -->
+      <div class="tab-content" id="applications-tab">
+        <section class="section">
+          <div class="section-header">
+            <h2 class="section-title">Active Applications</h2>
+            <select class="filter-select" id="statusFilter">
+              <option value="">All Status</option>
+              <option value="saved">Saved</option>
+              <option value="applied">Applied</option>
+              <option value="interviewing">Interviewing</option>
+              <option value="offer_received">Offer Received</option>
+            </select>
+          </div>
+
+          <div class="applications-list" id="applicationsList">
+            <div class="loading-spinner">
+              <div class="spinner"></div>
+              <p>Loading applications...</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Recommendations Tab -->
+      <div class="tab-content" id="recommendations-tab">
+        <section class="section">
+          <div class="section-header">
+            <h2 class="section-title">Recommended Jobs</h2>
+            <button class="icon-btn" id="refreshRecommendations" title="Refresh recommendations">
+              <svg width="16" height="16" fill="none" stroke="currentColor">
+                <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 014.51 15"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="recommendations-list" id="recommendationsList">
+            <div class="loading-spinner">
+              <div class="spinner"></div>
+              <p>Loading recommendations...</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Interviews Tab -->
+      <div class="tab-content" id="interviews-tab">
+        <section class="section">
+          <h2 class="section-title">Upcoming Interviews</h2>
+
+          <div class="interviews-list" id="interviewsList">
+            <div class="loading-spinner">
+              <div class="spinner"></div>
+              <p>Loading interviews...</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">Follow-ups Due</h2>
+
+          <div class="followups-list" id="followupsList">
+            <div class="loading-spinner">
+              <div class="spinner"></div>
+              <p>Loading follow-ups...</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Settings Tab -->
+      <div class="tab-content" id="settings-tab">
+        <section class="section">
+          <h2 class="section-title">API Configuration</h2>
+
+          <div class="form-group">
+            <label for="apiUrl">Backend API URL</label>
+            <input
+              type="url"
+              id="apiUrl"
+              placeholder="http://localhost:8000"
+              class="form-input"
+            />
+            <small class="form-hint">The URL of your Job Automation backend server</small>
+          </div>
+
+          <div class="form-group">
+            <label for="minScore">Minimum Match Score</label>
+            <input
+              type="number"
+              id="minScore"
+              min="0"
+              max="100"
+              step="5"
+              class="form-input"
+            />
+            <small class="form-hint">Only generate documents for jobs scoring above this threshold</small>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="autoGenerate" class="form-checkbox" />
+              <span>Auto-generate documents for high-scoring jobs</span>
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="notifications" class="form-checkbox" checked />
+              <span>Enable desktop notifications</span>
+            </label>
+          </div>
+
+          <button class="save-btn" id="saveSettings">Save Settings</button>
+
+          <div class="status-message hidden" id="status"></div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">Connection</h2>
+
+          <div class="connection-info">
+            <div class="info-row">
+              <span class="info-label">WebSocket Status:</span>
+              <span class="info-value" id="wsStatus">Checking...</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Connection Attempts:</span>
+              <span class="info-value" id="connectionAttempts">0</span>
+            </div>
+          </div>
+
+          <button class="secondary-btn" id="reconnectWebSocket">Reconnect WebSocket</button>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">About</h2>
+          <p class="about-text">
+            <strong>Job Application Assistant</strong> v1.0.0<br>
+            Automated job search, analysis, and application document generation.
+          </p>
+          <p class="about-text">
+            <a href="https://github.com/yourusername/jobfinderautomation" target="_blank" class="link">
+              View on GitHub
+            </a>
+          </p>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -3,7 +3,7 @@ Follow-up System Models
 
 Tracks and automates follow-up communications.
 """
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, Boolean, Float, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum

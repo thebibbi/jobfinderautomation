@@ -72,7 +72,7 @@ class ApplicationEvent(Base):
     old_status = Column(String, nullable=True)
     new_status = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)  # Additional event data
+    event_data = Column(JSON, nullable=True)  # Additional event data
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships

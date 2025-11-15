@@ -32,6 +32,14 @@ class SkillCategory(str, enum.Enum):
     OTHER = "other"
 
 
+class GapSeverity(str, enum.Enum):
+    """Severity of skill gap"""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 class CandidateSkill(Base):
     """
     Candidate's current skills and proficiency
