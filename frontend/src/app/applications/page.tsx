@@ -31,7 +31,7 @@ function KanbanColumn({ status, applications, onCardClick, onDrop }: any) {
 
   return (
     <div
-      ref={drop}
+      ref={drop as any}
       className={`flex-shrink-0 w-80 ${isOver ? 'ring-2 ring-blue-500' : ''}`}
     >
       <div className={`rounded-lg ${status.color} p-3 mb-3`}>
@@ -79,7 +79,7 @@ export default function ApplicationsPage() {
   const applications = applicationsData?.applications || [];
 
   const applicationsByStatus = STATUSES.reduce((acc, status) => {
-    acc[status.key] = applications.filter((app) => app.status === status.key);
+    acc[status.key] = applications.filter((app: any) => app.status === status.key);
     return acc;
   }, {} as Record<string, any[]>);
 
@@ -92,7 +92,7 @@ export default function ApplicationsPage() {
     try {
       await updateStatus.mutateAsync({
         jobId: appId,
-        status: { new_status: newStatus },
+        status: { status: newStatus },
       });
       showToast('success', 'Application status updated');
     } catch (error) {
@@ -106,7 +106,7 @@ export default function ApplicationsPage() {
     try {
       await updateStatus.mutateAsync({
         jobId: selectedApp.id,
-        status: { new_status: newStatus, notes },
+        status: { status: newStatus, notes },
       });
       showToast('success', 'Application status updated');
       setIsStatusModalOpen(false);
