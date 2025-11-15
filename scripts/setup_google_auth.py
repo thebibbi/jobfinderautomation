@@ -35,7 +35,8 @@ def setup_google_auth():
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 credentials_path, SCOPES)
-            creds = flow.run_local_server(port=0)
+            # Use fixed port 8080 for OAuth redirect
+            creds = flow.run_local_server(port=8080)
 
         # Save credentials
         os.makedirs('credentials', exist_ok=True)

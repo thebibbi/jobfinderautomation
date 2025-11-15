@@ -48,6 +48,7 @@ export const jobsApi = {
 };
 
 export const applicationsApi = {
+  list: (statusFilter?: string) => apiClient.get('/ats/applications', { params: { status: statusFilter } }),
   updateStatus: (id: number, data: any) => apiClient.post(`/ats/jobs/${id}/status`, data),
   getTimeline: (id: number) => apiClient.get(`/ats/jobs/${id}/timeline`),
   getStatistics: () => apiClient.get('/ats/statistics'),

@@ -7,32 +7,23 @@ import QuickActions from '@/components/dashboard/QuickActions';
 import { useJobs } from '@/hooks/useJobs';
 import { useATSStatistics } from '@/hooks/useApplications';
 import { useUpcomingInterviews } from '@/hooks/useInterviews';
+import { useActivities } from '@/hooks/useActivities';
 import { LoadingPage } from '@/components/common/LoadingSpinner';
 
 export default function DashboardPage() {
   const { data: jobs, isLoading: jobsLoading, error: jobsError } = useJobs();
   const { data: stats, isLoading: statsLoading, error: statsError } = useATSStatistics();
   const { data: interviews, isLoading: interviewsLoading, error: interviewsError } = useUpcomingInterviews(7);
+  const { data: activitiesData, isLoading: activitiesLoading, error: activitiesError } = useActivities(10);
 
-  if (jobsLoading || statsLoading || interviewsLoading) {
+  if (jobsLoading || statsLoading || interviewsLoading || activitiesLoading) {
     return <LoadingPage text="Loading dashboard..." />;
   }
 
   // Use default values if API calls fail
   const safeStats = stats || { total_jobs: 0, by_status: {} };
   const safeInterviews = interviews || [];
-
-  // Mock activity data - in real app, this would come from an API
-  const activities = [
-    {
-      id: 1,
-      type: 'job_added' as const,
-      title: 'New job added',
-      description: 'Senior Software Engineer position',
-      timestamp: new Date().toISOString(),
-      metadata: { company: 'Google' },
-    },
-  ];
+  const safeActivities = activitiesData?.activities || [];
 
   return (
     <div className="space-y-8">
@@ -93,7 +84,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Activity Feed - Takes 2 columns */}
         <div className="lg:col-span-2">
-          <ActivityFeed activities={activities} />
+          <ActivityFeed activities={safeActivities} />
         </div>
 
         {/* Quick Actions - Takes 1 column */}

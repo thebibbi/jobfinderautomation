@@ -7,10 +7,18 @@ import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
 import Badge from '@/components/common/Badge';
 import { useToast } from '@/components/common/Toast';
+import { useIntegrations, useConnectGoogle, useDisconnectIntegration, useTestIntegration } from '@/hooks/useIntegrations';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
 
 export default function SettingsPage() {
   const { showToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Fetch real integration statuses
+  const { data: integrationsData, isLoading: integrationsLoading, error: integrationsError } = useIntegrations();
+  const connectGoogle = useConnectGoogle();
+  const disconnectIntegration = useDisconnectIntegration();
+  const testIntegration = useTestIntegration();
 
   // Profile Settings
   const [profile, setProfile] = useState({
@@ -239,40 +247,205 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Integrations</CardTitle>
+          <p className="text-sm text-gray-600 mt-1">
+            Connect external services to enhance your job search
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">Google Calendar</p>
-                  <p className="text-sm text-gray-600">Sync interviews to your calendar</p>
+          {integrationsLoading && (
+            <div className="flex justify-center py-8">
+              <LoadingSpinner size="lg" />
+            </div>
+          )}
+          
+          {/* Show API error banner if there's an error */}
+          {integrationsError && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="font-medium text-red-800">Unable to fetch integration status</p>
+                  <p className="text-sm text-red-700 mt-1">
+                    The integration status API is currently unavailable. Showing last known status or default state.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => window.location.reload()}
+                  >
+                    Retry
+                  </Button>
                 </div>
               </div>
-              <Badge variant="success">Connected</Badge>
             </div>
+          )}
+          
+          {/* Show integrations even if there's an API error - with fallback status */}
+          {!integrationsLoading && (
+            <div className="space-y-3">
+              {/* Google Calendar */}
+              {(() => {
+                const calendar = integrationsData?.integrations.find(i => i.type === 'google_calendar');
+                const hasError = integrationsError;
+                return (
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded flex items-center justify-center">
+                        <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                          <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">Google Calendar</p>
+                        <p className="text-sm text-gray-600">Sync interviews to your calendar</p>
+                        {calendar?.metadata?.email && (
+                          <p className="text-xs text-gray-500 mt-1">📧 {calendar.metadata.email}</p>
+                        )}
+                        {calendar?.last_sync && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Last synced: {new Date(calendar.last_sync).toLocaleString()}
+                          </p>
+                        )}
+                        {calendar?.error_message && (
+                          <p className="text-xs text-red-600 mt-1">⚠️ {calendar.error_message}</p>
+                        )}
+                        {hasError && !calendar && (
+                          <p className="text-xs text-orange-600 mt-1">⚠️ Status unavailable - API error</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant={
+                          hasError && !calendar ? 'warning' :
+                          calendar?.status === 'connected' ? 'success' : 
+                          calendar?.status === 'error' ? 'danger' : 
+                          'default'
+                        }
+                      >
+                        {hasError && !calendar ? 'Unknown' :
+                         calendar?.status === 'connected' ? 'Connected' : 
+                         calendar?.status === 'error' ? 'Error' : 
+                         'Not Connected'}
+                      </Badge>
+                      {calendar?.status === 'connected' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await disconnectIntegration.mutateAsync('google_calendar');
+                              showToast('success', 'Google Calendar disconnected');
+                            } catch (error) {
+                              showToast('error', 'Failed to disconnect');
+                            }
+                          }}
+                        >
+                          Disconnect
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V6.414A2 2 0 0016.414 5L14 2.586A2 2 0 0012.586 2H9z" />
-                  </svg>
+              {/* Google Drive */}
+              {(() => {
+                const drive = integrationsData?.integrations.find(i => i.type === 'google_drive');
+                const hasError = integrationsError;
+                return (
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-100 rounded flex items-center justify-center">
+                        <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V6.414A2 2 0 0016.414 5L14 2.586A2 2 0 0012.586 2H9z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">Google Drive</p>
+                        <p className="text-sm text-gray-600">Store documents and resumes</p>
+                        {drive?.metadata?.email && (
+                          <p className="text-xs text-gray-500 mt-1">📧 {drive.metadata.email}</p>
+                        )}
+                        {drive?.last_sync && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Last synced: {new Date(drive.last_sync).toLocaleString()}
+                          </p>
+                        )}
+                        {drive?.error_message && (
+                          <p className="text-xs text-red-600 mt-1">⚠️ {drive.error_message}</p>
+                        )}
+                        {hasError && !drive && (
+                          <p className="text-xs text-orange-600 mt-1">⚠️ Status unavailable - API error</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant={
+                          hasError && !drive ? 'warning' :
+                          drive?.status === 'connected' ? 'success' : 
+                          drive?.status === 'error' ? 'danger' : 
+                          'default'
+                        }
+                      >
+                        {hasError && !drive ? 'Unknown' :
+                         drive?.status === 'connected' ? 'Connected' : 
+                         drive?.status === 'error' ? 'Error' : 
+                         'Not Connected'}
+                      </Badge>
+                      {drive?.status === 'connected' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await disconnectIntegration.mutateAsync('google_drive');
+                              showToast('success', 'Google Drive disconnected');
+                            } catch (error) {
+                              showToast('error', 'Failed to disconnect');
+                            }
+                          }}
+                        >
+                          Disconnect
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Connect Google Button */}
+              {!integrationsData?.google_auth_configured && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800 mb-3">
+                    Connect your Google account to enable Calendar and Drive integrations
+                  </p>
+                  <Button
+                    variant="primary"
+                    onClick={async () => {
+                      try {
+                        const result = await connectGoogle.mutateAsync();
+                        if (result.auth_url) {
+                          window.open(result.auth_url, '_blank');
+                          showToast('info', 'Please complete authentication in the new window');
+                        }
+                      } catch (error) {
+                        showToast('error', 'Failed to initiate Google connection');
+                      }
+                    }}
+                    isLoading={connectGoogle.isPending}
+                  >
+                    Connect Google Account
+                  </Button>
                 </div>
-                <div>
-                  <p className="font-medium text-gray-900">Google Drive</p>
-                  <p className="text-sm text-gray-600">Store documents and resumes</p>
-                </div>
-              </div>
-              <Badge variant="success">Connected</Badge>
+              )}
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

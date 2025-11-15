@@ -8,7 +8,7 @@ import UpdateStatusModal from '@/components/applications/UpdateStatusModal';
 import { Card } from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
 import { LoadingPage } from '@/components/common/LoadingSpinner';
-import { useApplications, useUpdateStatus } from '@/hooks/useApplications';
+import { useApplications, useApplicationsList, useUpdateStatus } from '@/hooks/useApplications';
 import { useToast } from '@/components/common/Toast';
 
 const STATUSES = [
@@ -66,16 +66,17 @@ function KanbanColumn({ status, applications, onCardClick, onDrop }: any) {
 export default function ApplicationsPage() {
   const [selectedApp, setSelectedApp] = useState<any>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const { data: stats, isLoading } = useApplications();
+  const { data: stats, isLoading: statsLoading } = useApplications();
+  const { data: applicationsData, isLoading: appsLoading, error: appsError } = useApplicationsList();
   const updateStatus = useUpdateStatus();
   const { showToast } = useToast();
 
-  if (isLoading) {
+  if (statsLoading || appsLoading) {
     return <LoadingPage text="Loading applications..." />;
   }
 
-  // Mock applications data - in real app, this would come from API
-  const applications: any[] = [];
+  // Use real applications data from API
+  const applications = applicationsData?.applications || [];
 
   const applicationsByStatus = STATUSES.reduce((acc, status) => {
     acc[status.key] = applications.filter((app) => app.status === status.key);

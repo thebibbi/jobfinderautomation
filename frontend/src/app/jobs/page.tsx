@@ -75,22 +75,42 @@ export default function JobsPage() {
     return <LoadingPage text="Loading jobs..." />;
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-red-600">Failed to load jobs. Please try again.</p>
-      </div>
-    );
-  }
+  // Use safe defaults even if there's an error
+  const safeJobs = jobs || [];
 
   return (
     <div className="space-y-6">
+      {/* API Error Banner */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1">
+              <p className="font-medium text-red-800">Unable to load jobs from API</p>
+              <p className="text-sm text-red-700 mt-1">
+                The jobs API is currently unavailable. You can still add jobs manually.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                onClick={() => window.location.reload()}
+              >
+                Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Jobs</h1>
           <p className="mt-2 text-gray-600">
-            {jobs?.length || 0} job{jobs?.length !== 1 ? 's' : ''} found
+            {error ? 'Unable to load jobs count' : `${safeJobs.length || 0} job${safeJobs.length !== 1 ? 's' : ''} found`}
           </p>
         </div>
         <div className="flex gap-3">
@@ -124,9 +144,9 @@ export default function JobsPage() {
 
         {/* Jobs Grid */}
         <div className="lg:col-span-3">
-          {jobs && jobs.length > 0 ? (
+          {safeJobs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {jobs.map((job) => (
+              {safeJobs.map((job) => (
                 <JobCard key={job.id} job={job} />
               ))}
             </div>

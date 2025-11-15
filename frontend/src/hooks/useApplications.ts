@@ -15,6 +15,17 @@ export function useApplications(statusFilter?: string) {
   });
 }
 
+export function useApplicationsList(statusFilter?: string) {
+  return useQuery({
+    queryKey: ['applications-list', statusFilter],
+    queryFn: async () => {
+      const response = await applicationsApi.list(statusFilter);
+      return response.data;
+    },
+    staleTime: 30000,
+  });
+}
+
 export function useApplicationTimeline(jobId: number) {
   return useQuery({
     queryKey: ['timeline', jobId],
