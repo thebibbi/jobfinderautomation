@@ -6,11 +6,12 @@ import JobCard from '@/components/jobs/JobCard';
 import JobFilters from '@/components/jobs/JobFilters';
 import AddJobModal from '@/components/jobs/AddJobModal';
 import ScrapeJobsModal from '@/components/jobs/ScrapeJobsModal';
+import ImportFromDriveModal from '@/components/jobs/ImportFromDriveModal';
 import Button from '@/components/common/Button';
 import { LoadingPage } from '@/components/common/LoadingSpinner';
 import { useJobs, useCreateJob } from '@/hooks/useJobs';
 import { useToast } from '@/components/common/Toast';
-import { scrapingApi } from '@/lib/api';
+import { jobsApi, scrapingApi } from '@/lib/api';
 import { JobFilters as JobFiltersType } from '@/types/job';
 
 export default function JobsPage() {
@@ -18,6 +19,7 @@ export default function JobsPage() {
   const [filters, setFilters] = useState<JobFiltersType>({});
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
   const [isScrapeModalOpen, setIsScrapeModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const { data: jobs, isLoading, error } = useJobs(filters);
   const createJob = useCreateJob();
   const { showToast } = useToast();
@@ -53,6 +55,22 @@ export default function JobsPage() {
     }
   };
 
+  const handleImportFromDrive = async (fileId: string) => {
+    try {
+      const response = await jobsApi.importFromDrive(fileId);
+      showToast('success', response.data.message || 'Job imported successfully from Google Drive');
+      setIsImportModalOpen(false);
+
+      // Navigate to the imported job
+      if (response.data?.job_id) {
+        router.push(`/jobs/${response.data.job_id}`);
+      }
+    } catch (error: any) {
+      showToast('error', error.response?.data?.detail || 'Failed to import job from Drive');
+      throw error;
+    }
+  };
+
   if (isLoading) {
     return <LoadingPage text="Loading jobs..." />;
   }
@@ -76,6 +94,12 @@ export default function JobsPage() {
           </p>
         </div>
         <div className="flex gap-3">
+          <Button variant="ghost" onClick={() => setIsImportModalOpen(true)}>
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+            </svg>
+            Import from Drive
+          </Button>
           <Button variant="secondary" onClick={() => setIsScrapeModalOpen(true)}>
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -145,6 +169,11 @@ export default function JobsPage() {
         isOpen={isScrapeModalOpen}
         onClose={() => setIsScrapeModalOpen(false)}
         onScrape={handleScrapeJobs}
+      />
+      <ImportFromDriveModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImport={handleImportFromDrive}
       />
     </div>
   );

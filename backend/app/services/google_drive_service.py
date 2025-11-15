@@ -206,6 +206,113 @@ class GoogleDriveService:
             logger.error(f"❌ Error moving file: {e}")
             raise
 
+    def list_files_in_folder(
+        self,
+        folder_id: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        max_results: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        List files in a Google Drive folder
+
+        Args:
+            folder_id: Folder ID to search in (defaults to base folder)
+            mime_type: Filter by MIME type
+            max_results: Maximum number of results
+
+        Returns:
+            List of file metadata dicts
+        """
+        try:
+            parent_id = folder_id or self.base_folder_id
+
+            # Build query
+            query_parts = [f"'{parent_id}' in parents", "trashed=false"]
+            if mime_type:
+                query_parts.append(f"mimeType='{mime_type}'")
+
+            query = " and ".join(query_parts)
+
+            results = self.service.files().list(
+                q=query,
+                pageSize=max_results,
+                fields="files(id, name, mimeType, createdTime, modifiedTime, webViewLink, size)"
+            ).execute()
+
+            files = results.get('files', [])
+            logger.info(f"✅ Found {len(files)} files in folder {parent_id}")
+
+            return files
+
+        except Exception as e:
+            logger.error(f"❌ Error listing files: {e}")
+            raise
+
+    def download_file_content(self, file_id: str) -> str:
+        """
+        Download text content from a Google Drive file
+
+        Args:
+            file_id: File ID to download
+
+        Returns:
+            File content as string
+        """
+        try:
+            # Get file metadata first
+            file_meta = self.service.files().get(
+                fileId=file_id,
+                fields='mimeType, name'
+            ).execute()
+
+            mime_type = file_meta.get('mimeType')
+
+            # Handle Google Docs
+            if mime_type == 'application/vnd.google-apps.document':
+                # Export as plain text
+                request = self.service.files().export_media(
+                    fileId=file_id,
+                    mimeType='text/plain'
+                )
+            else:
+                # Download regular file
+                request = self.service.files().get_media(fileId=file_id)
+
+            content = request.execute()
+
+            # Convert bytes to string if needed
+            if isinstance(content, bytes):
+                content = content.decode('utf-8')
+
+            logger.info(f"✅ Downloaded file: {file_meta.get('name')}")
+            return content
+
+        except Exception as e:
+            logger.error(f"❌ Error downloading file: {e}")
+            raise
+
+    def get_file_metadata(self, file_id: str) -> Dict[str, Any]:
+        """
+        Get metadata for a file
+
+        Args:
+            file_id: File ID
+
+        Returns:
+            File metadata dict
+        """
+        try:
+            file = self.service.files().get(
+                fileId=file_id,
+                fields='id, name, mimeType, createdTime, modifiedTime, webViewLink, size, parents'
+            ).execute()
+
+            return file
+
+        except Exception as e:
+            logger.error(f"❌ Error getting file metadata: {e}")
+            raise
+
 
 # Singleton
 _drive_service = None
