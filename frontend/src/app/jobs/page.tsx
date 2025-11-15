@@ -1,16 +1,57 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import JobCard from '@/components/jobs/JobCard';
 import JobFilters from '@/components/jobs/JobFilters';
+import AddJobModal from '@/components/jobs/AddJobModal';
+import ScrapeJobsModal from '@/components/jobs/ScrapeJobsModal';
 import Button from '@/components/common/Button';
 import { LoadingPage } from '@/components/common/LoadingSpinner';
-import { useJobs } from '@/hooks/useJobs';
+import { useJobs, useCreateJob } from '@/hooks/useJobs';
+import { useToast } from '@/components/common/Toast';
+import { scrapingApi } from '@/lib/api';
 import { JobFilters as JobFiltersType } from '@/types/job';
 
 export default function JobsPage() {
+  const router = useRouter();
   const [filters, setFilters] = useState<JobFiltersType>({});
+  const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
+  const [isScrapeModalOpen, setIsScrapeModalOpen] = useState(false);
   const { data: jobs, isLoading, error } = useJobs(filters);
+  const createJob = useCreateJob();
+  const { showToast } = useToast();
+
+  const handleAddJob = async (data: any) => {
+    try {
+      const response = await createJob.mutateAsync(data);
+      showToast('success', 'Job added successfully');
+      setIsAddJobModalOpen(false);
+      // Navigate to the new job
+      if (response.data?.id) {
+        router.push(`/jobs/${response.data.id}`);
+      }
+    } catch (error) {
+      showToast('error', 'Failed to add job');
+      throw error;
+    }
+  };
+
+  const handleScrapeJobs = async (data: any) => {
+    try {
+      const response = await scrapingApi.trigger(data);
+      showToast('success', 'Scraping job started! You\'ll be notified when it completes.');
+      setIsScrapeModalOpen(false);
+
+      // Optionally, you could poll for results or use websockets
+      if (response.data?.task_id) {
+        showToast('info', `Task ID: ${response.data.task_id}`);
+      }
+    } catch (error: any) {
+      showToast('error', error.response?.data?.detail || 'Failed to start scraping');
+      throw error;
+    }
+  };
 
   if (isLoading) {
     return <LoadingPage text="Loading jobs..." />;
@@ -34,12 +75,20 @@ export default function JobsPage() {
             {jobs?.length || 0} job{jobs?.length !== 1 ? 's' : ''} found
           </p>
         </div>
-        <Button variant="primary">
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Job
-        </Button>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={() => setIsScrapeModalOpen(true)}>
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            Scrape Jobs
+          </Button>
+          <Button variant="primary" onClick={() => setIsAddJobModalOpen(true)}>
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Job
+          </Button>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -77,12 +126,26 @@ export default function JobsPage() {
                 Get started by adding a new job or adjusting your filters.
               </p>
               <div className="mt-6">
-                <Button variant="primary">Add your first job</Button>
+                <Button variant="primary" onClick={() => setIsAddJobModalOpen(true)}>
+                  Add your first job
+                </Button>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Modals */}
+      <AddJobModal
+        isOpen={isAddJobModalOpen}
+        onClose={() => setIsAddJobModalOpen(false)}
+        onAdd={handleAddJob}
+      />
+      <ScrapeJobsModal
+        isOpen={isScrapeModalOpen}
+        onClose={() => setIsScrapeModalOpen(false)}
+        onScrape={handleScrapeJobs}
+      />
     </div>
   );
 }
