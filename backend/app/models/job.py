@@ -40,6 +40,8 @@ class Job(Base):
     # Google Drive Integration
     drive_folder_id = Column(String, nullable=True)
     drive_folder_url = Column(String, nullable=True)
+    drive_file_id = Column(String, nullable=True)  # For imported JDs
+    drive_file_url = Column(String, nullable=True)  # For imported JDs
 
     # Relationships
     documents = relationship("Document", back_populates="job")

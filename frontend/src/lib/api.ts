@@ -43,6 +43,8 @@ export const jobsApi = {
   analyze: (id: number) => apiClient.post(`/analysis/jobs/${id}/analyze`),
   generateDocuments: (id: number) => apiClient.post(`/documents/jobs/${id}/generate`),
   getDocuments: (id: number) => apiClient.get(`/documents/jobs/${id}`),
+  listDriveFiles: (folderId?: string) => apiClient.get('/jobs/drive/list', { params: { folder_id: folderId } }),
+  importFromDrive: (fileId: string) => apiClient.post(`/jobs/import-from-drive/${fileId}`),
 };
 
 export const applicationsApi = {
