@@ -19,8 +19,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5; // Reasonable number of attempts before giving up
 
   const connect = useCallback(() => {
+    // Stop trying if we've exceeded max attempts
+    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+      console.log('Max reconnection attempts reached. WebSocket disabled.');
+      return;
+    }
+
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
     const channelsParam = channels.join(',');
     const url = `${wsUrl}/api/v1/ws?user_id=${userId}&channels=${channelsParam}`;
@@ -29,7 +36,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('✅ WebSocket connected');
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
         onConnect?.();
@@ -51,44 +58,52 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
       };
 
       ws.onclose = () => {
-        console.log('WebSocket closed');
+        console.log('🔌 WebSocket closed');
         setIsConnected(false);
         onDisconnect?.();
 
-        // Reconnect with exponential backoff
-        if (reconnectAttemptsRef.current < 10) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+        // Only reconnect if we haven't exceeded max attempts
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
           reconnectAttemptsRef.current += 1;
 
+          console.log(`⏳ Reconnecting in ${delay}ms... (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`Reconnecting... (attempt ${reconnectAttemptsRef.current})`);
             connect();
           }, delay);
+        } else {
+          console.log('⚠️ WebSocket connection failed. Real-time updates disabled. Please refresh the page to retry.');
         }
       };
 
       wsRef.current = ws;
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
+      reconnectAttemptsRef.current = maxReconnectAttempts; // Stop trying
     }
   }, [userId, channels, onMessage, onConnect, onDisconnect]);
 
   useEffect(() => {
-    connect();
+    // Only connect if not already connected or connecting
+    if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+      connect();
+    }
 
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      if (wsRef.current) {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [connect]);
+  }, []); // Empty dependency array to prevent reconnection on every render
 
   const send = useCallback((data: any) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

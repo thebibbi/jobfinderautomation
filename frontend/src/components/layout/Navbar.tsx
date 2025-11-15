@@ -34,12 +34,14 @@ export default function Navbar() {
               </div>
             </Link>
 
-            {/* Connection Status */}
-            <div className="ml-4">
-              <Badge variant={isConnected ? 'success' : 'danger'} size="sm" dot>
-                {isConnected ? 'Connected' : 'Disconnected'}
-              </Badge>
-            </div>
+            {/* Connection Status - Only show when connected for less distraction */}
+            {isConnected && (
+              <div className="ml-4">
+                <Badge variant="success" size="sm" dot>
+                  Live
+                </Badge>
+              </div>
+            )}
           </div>
 
           {/* Desktop Navigation */}

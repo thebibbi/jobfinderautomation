@@ -49,3 +49,16 @@ extension/*.pem
 # Temporary files
 tmp/
 temp/
+
+# Node.js / JavaScript
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.next/
+.nuxt/
+dist/
+out/
+
+# MCP Config (should be in user home directory)
+mcp_config.json

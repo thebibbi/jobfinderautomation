@@ -10,13 +10,17 @@ import { useUpcomingInterviews } from '@/hooks/useInterviews';
 import { LoadingPage } from '@/components/common/LoadingSpinner';
 
 export default function DashboardPage() {
-  const { data: jobs, isLoading: jobsLoading } = useJobs();
-  const { data: stats, isLoading: statsLoading } = useATSStatistics();
-  const { data: interviews, isLoading: interviewsLoading } = useUpcomingInterviews(7);
+  const { data: jobs, isLoading: jobsLoading, error: jobsError } = useJobs();
+  const { data: stats, isLoading: statsLoading, error: statsError } = useATSStatistics();
+  const { data: interviews, isLoading: interviewsLoading, error: interviewsError } = useUpcomingInterviews(7);
 
   if (jobsLoading || statsLoading || interviewsLoading) {
     return <LoadingPage text="Loading dashboard..." />;
   }
+
+  // Use default values if API calls fail
+  const safeStats = stats || { total_jobs: 0, by_status: {} };
+  const safeInterviews = interviews || [];
 
   // Mock activity data - in real app, this would come from an API
   const activities = [
@@ -42,7 +46,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Active Jobs"
-          value={stats?.total_jobs || 0}
+          value={safeStats.total_jobs || 0}
           change={12}
           color="blue"
           icon={
@@ -53,7 +57,7 @@ export default function DashboardPage() {
         />
         <StatsCard
           title="Applications Sent"
-          value={stats?.by_status?.applied || 0}
+          value={safeStats.by_status?.applied || 0}
           change={8}
           color="green"
           icon={
@@ -64,7 +68,7 @@ export default function DashboardPage() {
         />
         <StatsCard
           title="Interviews"
-          value={interviews?.length || 0}
+          value={safeInterviews.length || 0}
           color="purple"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -74,7 +78,7 @@ export default function DashboardPage() {
         />
         <StatsCard
           title="Offers"
-          value={stats?.by_status?.offer_received || 0}
+          value={safeStats.by_status?.offer_received || 0}
           change={100}
           color="yellow"
           icon={

@@ -13,7 +13,11 @@
     "https://www.indeed.com/*",
     "https://www.glassdoor.com/*",
     "http://localhost:8000/*",
-    "https://*.railway.app/*"
+    "http://127.0.0.1:8000/*",
+    "ws://localhost:8000/*",
+    "ws://127.0.0.1:8000/*",
+    "https://*.railway.app/*",
+    "wss://*.railway.app/*"
   ],
   "background": {
     "scripts": ["background.js"]

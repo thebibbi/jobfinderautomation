@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ToastProvider } from '@/components/common/Toast';
+import Providers from '@/components/providers/Providers';
 import Navbar from '@/components/layout/Navbar';
 import Sidebar from '@/components/layout/Sidebar';
 import Footer from '@/components/layout/Footer';
@@ -13,24 +12,6 @@ export const metadata: Metadata = {
   title: 'Job Automation - AI-Powered Job Search',
   description: 'Streamline your job search with AI-powered automation',
 };
-
-// Create a client outside of the component to prevent recreation on every render
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60 * 1000, // 1 minute
-      retry: 1,
-    },
-  },
-});
-
-function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>{children}</ToastProvider>
-    </QueryClientProvider>
-  );
-}
 
 export default function RootLayout({
   children,

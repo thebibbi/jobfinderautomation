@@ -15,17 +15,8 @@ async function initWebSocket() {
   const settings = await browser.storage.sync.get(['apiUrl']);
   const apiUrl = settings.apiUrl || 'http://localhost:8000';
 
-  // Handle WebSocket URL based on environment
-  let wsUrl;
-  if (apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
-    // Local development: use ws:// without SSL
-    wsUrl = apiUrl.replace(/^https?/, 'ws') + '/api/v1/ws?user_id=extension&channels=jobs,applications,interviews,recommendations,skills,followups';
-  } else {
-    // Production: use wss:// with SSL
-    wsUrl = apiUrl.replace(/^https?/, 'wss') + '/api/v1/ws?user_id=extension&channels=jobs,applications,interviews,recommendations,skills,followups';
-  }
-
-  console.log('🔌 Connecting to WebSocket:', wsUrl);
+  // Convert HTTP to WS (simple approach like Chrome extension)
+  const wsUrl = apiUrl.replace(/^http/, 'ws') + '/api/v1/ws?user_id=extension&channels=jobs,applications,interviews,recommendations,skills,followups';
 
   try {
     ws = new WebSocket(wsUrl);
