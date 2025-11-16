@@ -14,9 +14,10 @@ redis==5.0.1
 
 # AI/ML
 anthropic==0.7.7
-sentence-transformers==2.2.2
+sentence-transformers==2.7.0
 torch==2.0.1  # For semantic matching - stable version
-transformers==4.30.0  # Compatible with torch 2.0.1
+transformers==4.40.0  # Compatible with sentence-transformers 2.7.0
+huggingface-hub==0.23.0  # Compatible version
 numpy==1.24.3
 
 # Google APIs

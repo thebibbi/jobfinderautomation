@@ -7,6 +7,11 @@ export interface Recommendation {
   recommendation_score: number;
   match_score?: number;
   reasons: string[];
+  match_reasons?: string[];
+  salary_min?: number;
+  salary_max?: number;
+  confidence_score?: number;
+  recommended_at?: string;
   preference_factors: {
     skills_match: number;
     location_match: number;
@@ -22,6 +27,8 @@ export interface RecommendationFilters {
   include_reasons?: boolean;
   filter_applied?: boolean;
   min_score?: number;
+  location?: string;
+  job_type?: string;
 }
 
 export interface RecommendationResponse {

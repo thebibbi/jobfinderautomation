@@ -33,7 +33,7 @@ export default function ApplicationCard({ application, onClick }: ApplicationCar
 
   return (
     <div
-      ref={drag}
+      ref={drag as any}
       style={{ opacity: isDragging ? 0.5 : 1 }}
       className="cursor-move"
     >

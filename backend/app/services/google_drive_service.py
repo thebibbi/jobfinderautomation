@@ -53,13 +53,32 @@ class GoogleDriveService:
         """
         try:
             folder_name = f"{company} - {job_title}"
-            parent_id = parent_folder_id or self.base_folder_id
-
+            
+            # Determine parent folder
+            parent_id = parent_folder_id
+            if not parent_id and self.base_folder_id:
+                # Verify base folder exists and is accessible
+                try:
+                    self.service.files().get(
+                        fileId=self.base_folder_id,
+                        fields='id'
+                    ).execute()
+                    parent_id = self.base_folder_id
+                    logger.info(f"✅ Using base folder: {self.base_folder_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Base folder not accessible: {e}")
+                    logger.info("📁 Creating folder in root Drive instead")
+                    parent_id = None
+            
+            # Create folder metadata
             file_metadata = {
                 'name': folder_name,
-                'mimeType': 'application/vnd.google-apps.folder',
-                'parents': [parent_id]
+                'mimeType': 'application/vnd.google-apps.folder'
             }
+            
+            # Only add parent if we have one
+            if parent_id:
+                file_metadata['parents'] = [parent_id]
 
             folder = self.service.files().create(
                 body=file_metadata,
@@ -91,7 +110,7 @@ class GoogleDriveService:
             content: Document content (text or bytes)
             filename: Name for the file
             folder_id: Parent folder ID
-            mime_type: MIME type of file
+            mime_type: Target MIME type (Google Doc, PDF, etc.)
 
         Returns:
             {"file_id": "...", "file_url": "..."}
@@ -107,10 +126,18 @@ class GoogleDriveService:
                 'name': filename,
                 'parents': [folder_id]
             }
+            
+            # If converting to Google Doc, specify the target MIME type in metadata
+            # and use text/plain as the source MIME type
+            if mime_type == 'application/vnd.google-apps.document':
+                file_metadata['mimeType'] = mime_type
+                source_mime_type = 'text/plain'
+            else:
+                source_mime_type = mime_type
 
             media = MediaIoBaseUpload(
                 io.BytesIO(content_bytes),
-                mimetype=mime_type,
+                mimetype=source_mime_type,
                 resumable=True
             )
 

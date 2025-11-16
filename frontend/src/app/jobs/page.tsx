@@ -162,7 +162,7 @@ export default function JobsPage() {
         <div className="lg:col-span-3">
           {safeJobs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {safeJobs.map((job) => (
+              {safeJobs.map((job: any) => (
                 <JobCard key={job.id} job={job} />
               ))}
             </div>

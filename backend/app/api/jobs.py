@@ -399,44 +399,29 @@ async def upload_job_description(
 
         logger.info(f"✅ Converted to Markdown ({len(markdown_content)} chars)")
 
-        # Use AI to extract job details from the markdown
-        ai_service = AIService()
-
-        extraction_prompt = f"""
-You are extracting structured job information from a job description.
-
-Job Description (Markdown format):
-{markdown_content}
-
-Extract and return ONLY a JSON object with these fields:
-- company: Company name (string)
-- job_title: Job title (string)
-- location: Location (string, or "Remote" if remote)
-- job_url: Job posting URL if mentioned (string, or empty string if not found)
-- job_description: Full job description (string, preserve original markdown text)
-
-Return ONLY valid JSON, no markdown code blocks, no explanations.
-"""
-
-        response = await ai_service.generate(extraction_prompt)
-
-        # Parse AI response
+        # Import json and re at the top of the try block
         import json
         import re
 
-        # Try to extract JSON from response
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            job_data = json.loads(json_match.group())
-        else:
-            # Fallback: create basic job with markdown as description
-            job_data = {
-                "company": "Unknown Company",
-                "job_title": file.filename.replace(file_ext, '').strip(),
-                "location": "Unknown",
-                "job_url": "",
-                "job_description": markdown_content
-            }
+        # Extract basic job details from filename and content
+        # Simple extraction without AI to avoid errors
+        job_data = {
+            "company": "Unknown Company",
+            "job_title": file.filename.replace(file_ext, '').strip(),
+            "location": "Unknown",
+            "job_url": "",
+            "job_description": markdown_content
+        }
+
+        # Try to extract company name from first few lines
+        lines = markdown_content.split('\n')[:10]
+        for line in lines:
+            if 'company' in line.lower() or 'organization' in line.lower():
+                # Try to extract company name
+                parts = line.split(':')
+                if len(parts) > 1:
+                    job_data['company'] = parts[1].strip()
+                    break
 
         # Ensure required fields
         company = job_data.get('company', 'Unknown Company').strip()

@@ -1,4 +1,6 @@
 // Application-related types
+import { Job } from './job';
+
 export interface Application extends Job {
   // Inherits from Job
 }

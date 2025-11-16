@@ -1,9 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/common/Card';
 import StatusBadge from './StatusBadge';
 import { formatDate } from '@/lib/utils';
+import { apiClient } from '@/lib/api';
+import { LoadingPage } from '@/components/common/LoadingSpinner';
 
 interface TimelineEvent {
   id: number;
@@ -16,10 +18,33 @@ interface TimelineEvent {
 }
 
 interface ApplicationTimelineProps {
-  events: TimelineEvent[];
+  jobId: number;
 }
 
-export default function ApplicationTimeline({ events }: ApplicationTimelineProps) {
+export default function ApplicationTimeline({ jobId }: ApplicationTimelineProps) {
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTimeline = async () => {
+      try {
+        const response = await apiClient.get(`/applications/${jobId}/timeline`);
+        setEvents(response.data.events || []);
+      } catch (error) {
+        console.error('Failed to fetch timeline:', error);
+        setEvents([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTimeline();
+  }, [jobId]);
+
+  if (loading) {
+    return <LoadingPage />;
+  }
+
   const getEventIcon = (eventType: string) => {
     switch (eventType) {
       case 'status_change':

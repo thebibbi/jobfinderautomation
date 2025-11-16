@@ -216,3 +216,66 @@ def analyze_job_task(job_id: int):
     import asyncio
     analyzer = get_job_analyzer()
     return asyncio.run(analyzer.analyze_job(job_id))
+
+
+@celery_app.task(name='scrape_jobs_task')
+def scrape_jobs_task(
+    job_titles: list,
+    locations: list = None,
+    sources: list = None,
+    max_per_source: int = 20
+):
+    """
+    Background task to scrape jobs from various platforms
+    
+    Args:
+        job_titles: List of job titles to search for
+        locations: List of locations to search in
+        sources: List of platforms to scrape (linkedin, indeed, etc.)
+        max_per_source: Maximum number of jobs to scrape per source
+    """
+    db = SessionLocal()
+    
+    try:
+        from ..services.scraper_service import get_scraper_service
+        
+        logger.info(f"🔍 Starting job scraping task...")
+        logger.info(f"   Job titles: {job_titles}")
+        logger.info(f"   Locations: {locations or ['Any']}")
+        logger.info(f"   Sources: {sources or ['linkedin', 'indeed']}")
+        logger.info(f"   Max per source: {max_per_source}")
+        
+        scraper = get_scraper_service()
+        
+        # Scrape jobs
+        jobs = scraper.scrape_jobs(
+            job_titles=job_titles,
+            locations=locations or [],
+            sources=sources or ['linkedin', 'indeed'],
+            max_per_source=max_per_source,
+            min_semantic_score=40.0
+        )
+        
+        logger.info(f"✅ Scraped {len(jobs)} jobs")
+        
+        # Save to database
+        created_ids = scraper.save_scraped_jobs(jobs)
+        
+        logger.info(f"✅ Saved {len(created_ids)} new jobs to database")
+        
+        # Optionally trigger analysis for high-scoring jobs
+        for job_id in created_ids[:5]:  # Analyze top 5 jobs
+            analyze_job_task.delay(job_id)
+        
+        return {
+            'success': True,
+            'total_scraped': len(jobs),
+            'saved_to_database': len(created_ids),
+            'job_ids': created_ids
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in scrape_jobs_task: {e}")
+        raise
+    finally:
+        db.close()

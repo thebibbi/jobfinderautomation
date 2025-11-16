@@ -40,6 +40,10 @@ export interface JobFilters {
   source?: string;
   skip?: number;
   limit?: number;
+  location?: string;
+  job_type?: string;
+  company?: string;
+  search?: string;
 }
 
 export interface JobAnalysis {

@@ -17,6 +17,13 @@ class ScrapeRequest(BaseModel):
     auto_analyze: bool = False  # Automatically trigger analysis for matched jobs
 
 
+class TriggerScrapeRequest(BaseModel):
+    platform: str  # linkedin, indeed, glassdoor
+    keywords: str
+    location: Optional[str] = None
+    max_results: Optional[int] = 20
+
+
 @router.post("/search")
 async def search_jobs(request: ScrapeRequest, background_tasks: BackgroundTasks):
     """
@@ -66,6 +73,61 @@ async def search_jobs(request: ScrapeRequest, background_tasks: BackgroundTasks)
             status_code=500,
             detail=f"Error scraping jobs: {str(e)}"
         )
+
+
+@router.post("/trigger")
+async def trigger_scrape(request: TriggerScrapeRequest, background_tasks: BackgroundTasks):
+    """
+    Trigger a job scraping task (called from the UI modal)
+    
+    This endpoint matches the frontend ScrapeJobsModal format
+    """
+    try:
+        from ..tasks.job_tasks import scrape_jobs_task
+        
+        # Convert keywords to list of job titles
+        job_titles = [title.strip() for title in request.keywords.split(',')]
+        locations = [request.location] if request.location else []
+        
+        # Start scraping task in background
+        task_id = f"scrape_{request.platform}_{hash(request.keywords)}"
+        
+        background_tasks.add_task(
+            scrape_jobs_task,
+            job_titles=job_titles,
+            locations=locations,
+            sources=[request.platform],
+            max_per_source=request.max_results or 20
+        )
+        
+        return {
+            "success": True,
+            "task_id": task_id,
+            "message": f"Scraping started for {request.keywords} on {request.platform}",
+            "details": {
+                "platform": request.platform,
+                "keywords": request.keywords,
+                "location": request.location,
+                "max_results": request.max_results
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error starting scrape task: {str(e)}"
+        )
+
+
+@router.get("/status/{task_id}")
+async def get_scrape_status(task_id: str):
+    """Get status of a scraping task"""
+    # TODO: Implement task status tracking with Celery or Redis
+    return {
+        "task_id": task_id,
+        "status": "running",
+        "message": "Scraping in progress..."
+    }
 
 
 @router.get("/supported-sources")

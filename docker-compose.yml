@@ -112,14 +112,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NEXT_PUBLIC_WS_URL=ws://backend:8000
-      - NODE_ENV=${NODE_ENV:-development}
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+      - NODE_ENV=production
     depends_on:
       - backend
     networks:
       - job-automation
-    # For development, use this instead of the Dockerfile
+    # For development with hot reload, uncomment below and comment out the Dockerfile build
     # volumes:
     #   - ./frontend:/app
     #   - /app/node_modules

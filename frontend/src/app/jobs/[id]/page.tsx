@@ -51,7 +51,7 @@ export default function JobDetailPage() {
     try {
       await updateStatus.mutateAsync({
         jobId: job.id,
-        status: { new_status: 'applied' },
+        status: { status: 'applied' },
       });
       showToast('success', 'Application status updated to Applied');
     } catch (error) {
@@ -63,7 +63,7 @@ export default function JobDetailPage() {
     try {
       await updateStatus.mutateAsync({
         jobId: job.id,
-        status: { new_status: newStatus, notes },
+        status: { status: newStatus, notes },
       });
       showToast('success', 'Status updated successfully');
       setIsStatusModalOpen(false);

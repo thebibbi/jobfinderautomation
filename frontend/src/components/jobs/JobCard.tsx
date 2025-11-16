@@ -21,6 +21,7 @@ export default function JobCard({ job }: JobCardProps) {
       apply_now: { variant: 'success' as const, text: 'Apply Now' },
       apply_with_confidence: { variant: 'info' as const, text: 'Good Match' },
       consider_carefully: { variant: 'warning' as const, text: 'Consider' },
+      not_recommended: { variant: 'danger' as const, text: 'Not Recommended' },
       skip: { variant: 'danger' as const, text: 'Skip' },
     };
 
@@ -73,7 +74,7 @@ export default function JobCard({ job }: JobCardProps) {
         <div className="flex items-center gap-3">
           {job.match_score !== undefined && (
             <div className="flex items-center gap-2">
-              <div className={`px-2 py-1 rounded text-sm font-semibold ${colorClasses[matchScoreColor]}`}>
+              <div className={`px-2 py-1 rounded text-sm font-semibold ${colorClasses[matchScoreColor as keyof typeof colorClasses]}`}>
                 {job.match_score}%
               </div>
               <span className="text-xs text-gray-500">Match</span>

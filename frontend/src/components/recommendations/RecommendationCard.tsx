@@ -54,8 +54,8 @@ export default function RecommendationCard({ recommendation }: RecommendationCar
             </h3>
             <p className="text-sm text-gray-600 mt-1">{recommendation.company}</p>
           </div>
-          <div className={`px-3 py-1 rounded-lg text-lg font-bold ${getScoreColor(recommendation.match_score)}`}>
-            {recommendation.match_score}%
+          <div className={`px-3 py-1 rounded-lg text-lg font-bold ${getScoreColor(recommendation.match_score || 0)}`}>
+            {recommendation.match_score || 0}%
           </div>
         </div>
 
@@ -100,13 +100,13 @@ export default function RecommendationCard({ recommendation }: RecommendationCar
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Confidence Score</span>
             <span className="font-medium text-gray-900">
-              {(recommendation.confidence_score * 100).toFixed(0)}%
+              {((recommendation.confidence_score || 0) * 100).toFixed(0)}%
             </span>
           </div>
           <div className="mt-1 w-full bg-gray-200 rounded-full h-1.5">
             <div
               className="bg-blue-600 h-1.5 rounded-full"
-              style={{ width: `${recommendation.confidence_score * 100}%` }}
+              style={{ width: `${(recommendation.confidence_score || 0) * 100}%` }}
             />
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function RecommendationCard({ recommendation }: RecommendationCar
 
         {/* Footer */}
         <div className="text-xs text-gray-500">
-          Recommended {formatRelativeTime(recommendation.recommended_at)}
+          Recommended {formatRelativeTime(recommendation.recommended_at || new Date().toISOString())}
         </div>
       </div>
     </Card>
