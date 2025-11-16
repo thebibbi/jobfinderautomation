@@ -45,6 +45,15 @@ export const jobsApi = {
   getDocuments: (id: number) => apiClient.get(`/documents/jobs/${id}`),
   listDriveFiles: (folderId?: string) => apiClient.get('/jobs/drive/list', { params: { folder_id: folderId } }),
   importFromDrive: (fileId: string) => apiClient.post(`/jobs/import-from-drive/${fileId}`),
+  uploadJD: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post('/jobs/upload-jd', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
 };
 
 export const applicationsApi = {

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -10,6 +10,7 @@ from ..schemas.job import JobCreate, JobResponse, JobUpdate, JobList, JobFromExt
 from ..services.integration_service import integrate_job_created
 from ..services.google_drive_service import get_drive_service
 from ..services.ai_service import AIService
+from ..services.document_converter import get_document_converter
 
 router = APIRouter()
 
@@ -340,4 +341,196 @@ Return ONLY valid JSON, no markdown, no explanations.
         raise HTTPException(
             status_code=500,
             detail=f"Error importing job: {str(e)}"
+        )
+
+
+@router.post("/upload-jd")
+async def upload_job_description(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a job description file (DOCX, PDF, or MD)
+
+    This will:
+    1. Convert the file to Markdown (if needed)
+    2. Use AI to extract job information
+    3. Create a job record in the database
+    4. Create a Google Drive folder for the company/job
+    5. Upload the markdown JD to Google Drive
+    6. Trigger job analysis and document generation
+    """
+    try:
+        # Validate file type
+        allowed_extensions = ['.docx', '.pdf', '.md', '.markdown']
+        file_ext = None
+        for ext in allowed_extensions:
+            if file.filename.lower().endswith(ext):
+                file_ext = ext
+                break
+
+        if not file_ext:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+            )
+
+        logger.info(f"📤 Uploading job description: {file.filename} ({file_ext})")
+
+        # Read file content
+        file_content = await file.read()
+
+        if len(file_content) < 100:
+            raise HTTPException(
+                status_code=400,
+                detail="File is too small or empty"
+            )
+
+        # Convert to Markdown
+        converter = get_document_converter()
+        markdown_content = converter.convert_to_markdown(file_content, file.filename)
+
+        if not markdown_content or len(markdown_content.strip()) < 50:
+            raise HTTPException(
+                status_code=400,
+                detail="Converted content is too short or empty"
+            )
+
+        logger.info(f"✅ Converted to Markdown ({len(markdown_content)} chars)")
+
+        # Use AI to extract job details from the markdown
+        ai_service = AIService()
+
+        extraction_prompt = f"""
+You are extracting structured job information from a job description.
+
+Job Description (Markdown format):
+{markdown_content}
+
+Extract and return ONLY a JSON object with these fields:
+- company: Company name (string)
+- job_title: Job title (string)
+- location: Location (string, or "Remote" if remote)
+- job_url: Job posting URL if mentioned (string, or empty string if not found)
+- job_description: Full job description (string, preserve original markdown text)
+
+Return ONLY valid JSON, no markdown code blocks, no explanations.
+"""
+
+        response = await ai_service.generate(extraction_prompt)
+
+        # Parse AI response
+        import json
+        import re
+
+        # Try to extract JSON from response
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match:
+            job_data = json.loads(json_match.group())
+        else:
+            # Fallback: create basic job with markdown as description
+            job_data = {
+                "company": "Unknown Company",
+                "job_title": file.filename.replace(file_ext, '').strip(),
+                "location": "Unknown",
+                "job_url": "",
+                "job_description": markdown_content
+            }
+
+        # Ensure required fields
+        company = job_data.get('company', 'Unknown Company').strip()
+        job_title = job_data.get('job_title', 'Unknown Position').strip()
+        location = job_data.get('location', 'Unknown').strip()
+        job_url = job_data.get('job_url', '').strip()
+        job_description = job_data.get('job_description', markdown_content).strip()
+
+        # Check if job already exists (by company + title)
+        existing_job = db.query(Job).filter(
+            Job.company == company,
+            Job.job_title == job_title
+        ).first()
+
+        if existing_job:
+            return {
+                "success": True,
+                "job_id": existing_job.id,
+                "message": "Job already exists in the database",
+                "job": existing_job,
+                "drive_folder_url": existing_job.drive_folder_url
+            }
+
+        # Create Google Drive folder for this job
+        drive_service = get_drive_service()
+        folder_result = drive_service.create_job_folder(
+            company=company,
+            job_title=job_title
+        )
+
+        folder_id = folder_result['folder_id']
+        folder_url = folder_result['folder_url']
+
+        logger.info(f"✅ Created Drive folder: {folder_url}")
+
+        # Upload markdown JD to Drive
+        jd_upload_result = drive_service.upload_job_description(
+            jd_content=markdown_content,
+            folder_id=folder_id,
+            company=company,
+            job_title=job_title
+        )
+
+        logger.info(f"✅ Uploaded JD to Drive: {jd_upload_result['file_url']}")
+
+        # Create job record in database
+        job = Job(
+            company=company,
+            job_title=job_title,
+            job_description=job_description,
+            location=location,
+            job_url=job_url if job_url else None,
+            source='upload',
+            status='imported',
+            drive_folder_id=folder_id,
+            drive_folder_url=folder_url,
+            drive_file_id=jd_upload_result['file_id'],
+            drive_file_url=jd_upload_result['file_url']
+        )
+
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        logger.info(f"✅ Created job record: {job.id} - {company} - {job_title}")
+
+        # Queue async processing (analysis, document generation, etc.)
+        await integrate_job_created(db, job.id, auto_process=True)
+
+        return {
+            "success": True,
+            "job_id": job.id,
+            "message": f"Successfully uploaded JD for: {job_title} at {company}",
+            "job": job,
+            "drive_folder_url": folder_url,
+            "drive_file_url": jd_upload_result['file_url'],
+            "markdown_preview": markdown_content[:500] + "..." if len(markdown_content) > 500 else markdown_content
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Failed to parse AI response: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to extract job information from file. Please check the file format."
+        )
+    except ValueError as e:
+        logger.error(f"❌ File conversion error: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"❌ Error uploading job description: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing upload: {str(e)}"
         )
