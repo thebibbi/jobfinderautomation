@@ -7,7 +7,7 @@ interface LoadingSpinnerProps {
   text?: string;
 }
 
-export default function LoadingSpinner({
+export function LoadingSpinner({
   size = 'md',
   className,
   text,

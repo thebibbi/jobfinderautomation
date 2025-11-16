@@ -8,7 +8,7 @@ import Button from '@/components/common/Button';
 import Badge from '@/components/common/Badge';
 import { useToast } from '@/components/common/Toast';
 import { useIntegrations, useConnectGoogle, useDisconnectIntegration, useTestIntegration } from '@/hooks/useIntegrations';
-import LoadingSpinner from '@/components/common/LoadingSpinner';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 export default function SettingsPage() {
   const { showToast } = useToast();
